@@ -104,7 +104,7 @@ nodeToClientVersion = NodeToClientV_4
 -- argument to the client connection function in a future PR (the network magic
 -- number matches the one in the test net created by scripts)
 cfgNetworkMagic :: NetworkMagic
-cfgNetworkMagic = NetworkMagic 1097911063
+cfgNetworkMagic = NetworkMagic 764824073
 
 cfgNetworkId :: NetworkId
 cfgNetworkId    = Testnet cfgNetworkMagic
