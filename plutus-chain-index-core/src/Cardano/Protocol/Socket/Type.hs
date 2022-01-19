@@ -107,7 +107,8 @@ cfgNetworkMagic :: NetworkMagic
 cfgNetworkMagic = NetworkMagic 764824073
 
 cfgNetworkId :: NetworkId
-cfgNetworkId    = Testnet cfgNetworkMagic
+-- cfgNetworkId    = Testnet cfgNetworkMagic
+cfgNetworkId    = Mainnet
 
 nodeToClientVersionData :: NodeToClientVersionData
 nodeToClientVersionData = NodeToClientVersionData { networkMagic = cfgNetworkMagic }
