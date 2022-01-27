@@ -319,7 +319,7 @@ toCardanoTxBody sigs protocolParams networkId P.Tx{..} = do
     txValidityRange <- toCardanoValidityRange txValidRange
     txMintValue <- toCardanoMintValue txRedeemers txMint txMintScripts
     txExtraKeyWits <- C.TxExtraKeyWitnesses C.ExtraKeyWitnessesInAlonzoEra <$> traverse toCardanoPaymentKeyHash sigs
-    first (TxBodyError . C.displayError) $ makeTransactionBody' C.TxBodyContent
+    first (TxBodyError . C.displayError) $ makeTransactionBody' txData C.TxBodyContent
         { txIns = txIns
         , txInsCollateral = txInsCollateral
         , txOuts = txOuts
