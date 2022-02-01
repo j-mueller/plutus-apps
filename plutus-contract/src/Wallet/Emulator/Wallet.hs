@@ -423,7 +423,7 @@ adjustBalanceWithMissingLovelace (neg, pos) = do
     (newNeg, newPos)
 
 addOutput :: PaymentPubKey -> Maybe StakePubKey -> Value -> Tx -> Tx
-addOutput pk sk vl tx = tx & over Tx.outputs (pko :) where
+addOutput pk sk vl tx = tx & over Tx.outputs (++ [pko]) where
     pko = Tx.pubKeyTxOut vl pk sk
 
 addCollateral
