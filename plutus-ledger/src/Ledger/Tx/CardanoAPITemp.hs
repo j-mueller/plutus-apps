@@ -52,11 +52,11 @@ makeTransactionBody' txdatums
     return $
       ShelleyTxBody ShelleyBasedEraAlonzo
         (Alonzo.TxBody
-          (Set.fromList (map (toShelleyTxIn . fst) txIns))
+          (Set.fromAscList (map (toShelleyTxIn . fst) txIns))
           (case txInsCollateral of
              TxInsCollateralNone     -> Set.empty
-             TxInsCollateral _ txins -> Set.fromList (map toShelleyTxIn txins))
-          (Seq.fromList (map toShelleyTxOut txOuts))
+             TxInsCollateral _ txins -> Set.fromAscList (map toShelleyTxIn txins))
+          (Seq.fromAscList (map toShelleyTxOut txOuts))
           (case txCertificates of
              TxCertificatesNone    -> Seq.empty
              TxCertificates _ cs _ -> Seq.fromList (map toShelleyCertificate cs))
