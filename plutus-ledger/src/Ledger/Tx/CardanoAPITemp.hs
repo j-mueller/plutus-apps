@@ -56,7 +56,7 @@ makeTransactionBody' txdatums
           (case txInsCollateral of
              TxInsCollateralNone     -> Set.empty
              TxInsCollateral _ txins -> Set.fromAscList (map toShelleyTxIn txins))
-          (Seq.fromAscList (map toShelleyTxOut txOuts))
+          (Seq.fromList (map toShelleyTxOut txOuts))
           (case txCertificates of
              TxCertificatesNone    -> Seq.empty
              TxCertificates _ cs _ -> Seq.fromList (map toShelleyCertificate cs))
