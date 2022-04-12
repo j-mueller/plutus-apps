@@ -8,11 +8,10 @@
 -- until https://github.com/input-output-hk/cardano-node/pull/2936 or something similar gets merged.
 module Ledger.Tx.CardanoAPITemp (makeTransactionBody') where
 
--- import Data.List qualified as List
+import Data.List qualified as List
 import Data.Map.Strict qualified as Map
 import Data.Sequence.Strict qualified as Seq
 import Data.Set qualified as Set
-import Data.Map qualified as DMap
 
 import Cardano.Api
 import Cardano.Api.Shelley hiding (toShelleyTxOut)
@@ -32,11 +31,9 @@ import Cardano.Ledger.ShelleyMA.TxBody qualified as Allegra
 import Cardano.Ledger.Keys qualified as Shelley
 import Cardano.Ledger.Shelley.Tx qualified as Shelley
 import Cardano.Ledger.Shelley.TxBody qualified as Shelley
-import Ledger.Scripts qualified as P
-import qualified PlutusTx
 
-makeTransactionBody' :: DMap.Map P.DatumHash P.Datum -> TxBodyContent BuildTx AlonzoEra -> Either TxBodyError (TxBody AlonzoEra)
-makeTransactionBody' txdatums
+makeTransactionBody' :: TxBodyContent BuildTx AlonzoEra -> Either TxBodyError (TxBody AlonzoEra)
+makeTransactionBody'
     txbodycontent@TxBodyContent {
         txIns,
         txInsCollateral,
@@ -55,7 +52,7 @@ makeTransactionBody' txdatums
           (Set.fromAscList (map (toShelleyTxIn . fst) txIns))
           (case txInsCollateral of
              TxInsCollateralNone     -> Set.empty
-             TxInsCollateral _ txins -> Set.fromAscList (map toShelleyTxIn txins))
+             TxInsCollateral _ txins -> Set.fromList (map toShelleyTxIn txins))
           (Seq.fromList (map toShelleyTxOut txOuts))
           (case txCertificates of
              TxCertificatesNone    -> Seq.empty
@@ -104,19 +101,19 @@ makeTransactionBody' txdatums
     datums :: Alonzo.TxDats StandardAlonzo
     datums =
      Alonzo.TxDats $
-     Map.fromList
-     [ (Alonzo.hashData d', d')
-     | (_, P.Datum d) <- DMap.toList txdatums
-     , let d' = toAlonzoData $ fromPlutusData $ PlutusTx.builtinDataToData d
-     ]
+      Map.fromList
+      [ (Alonzo.hashData d', d')
+      |  d <- scriptdata
+      , let d' = toAlonzoData d
+      ]
 
-    -- scriptdata :: [ScriptData]
-    -- scriptdata = List.nub $
-    --   [ d | TxOut _ _ (TxOutDatum ScriptDataInAlonzoEra d) <- txOuts ]
-    --   ++ [ d | (_, AnyScriptWitness
-    --                   (PlutusScriptWitness
-    --                     _ _ _ (ScriptDatumForTxIn d) _ _)) <- witnesses
-    --         ]
+    scriptdata :: [ScriptData]
+    scriptdata = List.nub $
+      [ d | TxOut _ _ (TxOutDatum ScriptDataInAlonzoEra d) <- txOuts ]
+      ++ [ d | (_, AnyScriptWitness
+                      (PlutusScriptWitness
+                        _ _ _ (ScriptDatumForTxIn d) _ _)) <- witnesses
+            ]
 
     redeemers :: Alonzo.Redeemers StandardAlonzo
     redeemers =
