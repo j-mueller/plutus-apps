@@ -247,7 +247,7 @@ instance Pretty ChainIndexQuery where
         StakeValidatorFromHash h   -> "requesting stake validator from hash" <+> pretty h
         RedeemerFromHash h         -> "requesting redeemer from hash" <+> pretty h
         UnspentTxOutFromRef r      -> "requesting utxo from utxo reference" <+> pretty r
-        TxOutFromRef r             -> "requesting utxo from utxo reference" <+> pretty r
+        TxOutFromRef r             -> "requesting txout from utxo reference" <+> pretty r
         UtxoSetMembership txOutRef -> "whether tx output is part of the utxo set" <+> pretty txOutRef
         UtxoSetAtAddress _ c       -> "requesting utxos located at addresses with the credential" <+> pretty c
         UtxoSetWithCurrency _ ac   -> "requesting utxos containing the asset class" <+> pretty ac
