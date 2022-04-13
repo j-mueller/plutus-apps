@@ -580,6 +580,7 @@ handleChainIndexEffect = runChainIndexEffects @t . \case
     StakeValidatorFromHash h  -> ChainIndex.stakeValidatorFromHash h
     RedeemerFromHash h        -> ChainIndex.redeemerFromHash h
     UnspentTxOutFromRef ref   -> ChainIndex.unspentTxOutFromRef ref
+    TxOutFromRef ref          -> ChainIndex.txOutFromRef ref
     UtxoSetMembership ref     -> ChainIndex.utxoSetMembership ref
     UtxoSetAtAddress pq addr  -> ChainIndex.utxoSetAtAddress pq addr
     UtxoSetWithCurrency pq ac -> ChainIndex.utxoSetWithCurrency pq ac

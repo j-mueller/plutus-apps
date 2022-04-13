@@ -30,6 +30,7 @@ import Control.Monad.Freer.Extras.Pagination (Page (Page), PageQuery (..))
 import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.Freer.State (State, get, gets, put)
 import Data.ByteString (ByteString)
+import Data.Either.Combinators (maybeToRight)
 import Data.FingerTree qualified as FT
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
@@ -60,7 +61,7 @@ import Plutus.ChainIndex.Types (ChainSyncBlock (..), Depth (..), Diagnostics (..
 import Plutus.ChainIndex.UtxoState (InsertUtxoSuccess (..), RollbackResult (..), UtxoIndex)
 import Plutus.ChainIndex.UtxoState qualified as UtxoState
 import Plutus.V1.Ledger.Ada qualified as Ada
-import Plutus.V1.Ledger.Api (Credential)
+import Plutus.V1.Ledger.Api (Credential (PubKeyCredential, ScriptCredential))
 
 type ChainIndexState = UtxoIndex TxUtxoBalance
 
@@ -147,7 +148,23 @@ getUtxoutFromRef ::
   )
   => TxOutRef
   -> Eff effs (Maybe ChainIndexTxOut)
-getUtxoutFromRef = queryOne . queryKeyValue utxoOutRefRows _utxoRowOutRef _utxoRowTxOut
+getUtxoutFromRef utxo = do
+  mtxout <- getTxOutFromRef utxo
+  case mtxout of
+    Nothing -> pure Nothing
+    Just txout ->
+      case addressCredential $ txOutAddress txout of
+        PubKeyCredential _ ->
+          pure $ Just $ PublicKeyChainIndexTxOut (txOutAddress txout) (txOutValue txout)
+        ScriptCredential vh -> do
+          case txOutDatumHash txout of
+            Nothing -> do
+              -- datum hash cannot be nothing for scriptCredential
+              pure Nothing
+            Just dh -> do
+              mdatum <- getDatumFromHash dh
+              mvl <- getScriptFromHash vh
+              pure $ Just $ ScriptChainIndexTxOut (txOutAddress txout) (maybeToRight vh mvl) (maybeToRight dh mdatum) (txOutValue txout)
 
 -- | Get the 'TxOut' for a 'TxOutRef'.
 getTxOutFromRef ::
