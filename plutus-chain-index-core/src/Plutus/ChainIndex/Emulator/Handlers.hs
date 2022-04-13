@@ -74,6 +74,22 @@ getTxFromTxId i = do
         Nothing -> logWarn (TxNotFound i) >> pure Nothing
         _       -> pure result
 
+-- | Get the 'TxOut' for a 'TxOutRef'.
+getTxOutFromRef ::
+  forall effs.
+  ( Member (State ChainIndexEmulatorState) effs
+  , Member (LogMsg ChainIndexLog) effs
+  )
+  => TxOutRef
+  -> Eff effs (Maybe TxOut)
+getTxOutFromRef ref@TxOutRef{txOutRefId, txOutRefIdx} = do
+  ds <- gets (view diskState)
+  -- Find the output in the tx matching the output ref
+  case preview (txMap . ix txOutRefId . citxOutputs . _ValidTx . ix (fromIntegral txOutRefIdx)) ds of
+    Nothing    -> logWarn (TxOutNotFound ref) >> pure Nothing
+    Just txout -> pure $ Just txout
+
+
 -- | Get the 'ChainIndexTxOut' for a 'TxOutRef'.
 getUtxoutFromRef ::
   forall effs.
@@ -120,6 +136,7 @@ handleQuery = \case
     StakeValidatorFromHash (StakeValidatorHash h) ->
       gets (fmap (fmap StakeValidator) . view $ diskState . scriptMap . at (ScriptHash h))
     UnspentTxOutFromRef ref -> getUtxoutFromRef ref
+    TxOutFromRef ref -> getTxOutFromRef ref
     RedeemerFromHash h -> gets (view $ diskState . redeemerMap . at h)
     UtxoSetMembership r -> do
         utxo <- gets (utxoState . view utxoIndex)
