@@ -134,7 +134,7 @@ import Wallet.Types (ContractInstanceId, EndpointDescription (EndpointDescriptio
                      EndpointValue (EndpointValue, unEndpointValue))
 
 import Plutus.ChainIndex (ChainIndexTx, Page (nextPageQuery, pageItems), PageQuery, txOutRefs)
-import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse, UtxosResponse (page))
+import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse (paget), UtxosResponse (page))
 import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip, TxOutStatus, TxStatus)
 import Plutus.Contract.Error (AsContractError (_ChainIndexContractError, _ConstraintResolutionContractError, _EndpointDecodeContractError, _ResumableContractError, _WalletContractError))
 import Plutus.Contract.Resumable (prompt)
@@ -414,6 +414,23 @@ utxosAt addr = do
                 $ zip utxoRefs txOuts
       pure $ acc <> utxos
 
+-- | Fold through each 'Page's of 'TxOutRef's at a given 'Address', and
+-- accumulate the result.
+foldAllUtxoRefsAt ::
+    forall w s e a.
+    ( AsContractError e
+    )
+    => (a -> Page TxOutRef -> Contract w s e a) -- ^ Accumulator function
+    -> a -- ^ Initial value
+    -> Address -- ^ Address which contain the UTXOs
+    -> Contract w s e a
+foldAllUtxoRefsAt f ini addr = go ini (Just def)
+  where
+    go acc Nothing = pure acc
+    go acc (Just pq) = do
+      page <- paget <$> txoRefsAt pq addr
+      newAcc <- f acc page
+      go newAcc (nextPageQuery page)
 
 -- | Get the transaction outputs at an address.
 txOutsAt ::
@@ -423,7 +440,7 @@ txOutsAt ::
     => Address
     -> Contract w s e [TxOut]
 txOutsAt addr = do
-  foldUtxoRefsAt f [] addr
+  foldAllUtxoRefsAt f [] addr
   where
     f acc page = do
       let utxoRefs = pageItems page
