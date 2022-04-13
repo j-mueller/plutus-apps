@@ -34,6 +34,7 @@ module Plutus.Contract.Request(
     , stakeValidatorFromHash
     , redeemerFromHash
     , unspentTxOutFromRef
+    , txOutFromRef
     , utxoRefMembership
     , utxoRefsAt
     , utxoRefsWithCurrency
@@ -116,7 +117,7 @@ import Ledger (Address, AssetClass, Datum, DatumHash, DiffMilliSeconds, MintingP
 import Ledger.Constraints (TxConstraints)
 import Ledger.Constraints.OffChain (ScriptLookups, UnbalancedTx)
 import Ledger.Constraints.OffChain qualified as Constraints
-import Ledger.Tx (CardanoTx, ChainIndexTxOut, ciTxOutValue, getCardanoTxId)
+import Ledger.Tx (CardanoTx, ChainIndexTxOut, TxOut, ciTxOutValue, getCardanoTxId)
 import Ledger.Typed.Scripts (Any, TypedValidator, ValidatorTypes (DatumType, RedeemerType))
 import Ledger.Value qualified as V
 import Plutus.Contract.Util (loopM)
@@ -323,6 +324,18 @@ unspentTxOutFromRef ref = do
   case cir of
     E.UnspentTxOutResponse r -> pure r
     r                        -> throwError $ review _ChainIndexContractError ("UnspentTxOutResponse", r)
+
+txOutFromRef ::
+    forall w s e.
+    ( AsContractError e
+    )
+    => TxOutRef
+    -> Contract w s e (Maybe TxOut)
+txOutFromRef ref = do
+  cir <- pabReq (ChainIndexQueryReq $ E.TxOutFromRef ref) E._ChainIndexQueryResp
+  case cir of
+    E.TxOutResponse r -> pure r
+    r                 -> throwError $ review _ChainIndexContractError ("TxOutResponse", r)
 
 utxoRefMembership ::
     forall w s e.
