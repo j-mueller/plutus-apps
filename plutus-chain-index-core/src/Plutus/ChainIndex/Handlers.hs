@@ -83,6 +83,7 @@ handleQuery = \case
     RedeemerFromHash hash       -> getRedeemerFromHash hash
     StakeValidatorFromHash hash -> getScriptFromHash hash
     UnspentTxOutFromRef tor     -> getUtxoutFromRef tor
+    TxOutFromRef tor -> getTxOutFromRef tor
     UtxoSetMembership r -> do
         utxoState <- gets @ChainIndexState UtxoState.utxoState
         case UtxoState.tip utxoState of
@@ -147,6 +148,15 @@ getUtxoutFromRef ::
   => TxOutRef
   -> Eff effs (Maybe ChainIndexTxOut)
 getUtxoutFromRef = queryOne . queryKeyValue utxoOutRefRows _utxoRowOutRef _utxoRowTxOut
+
+-- | Get the 'TxOut' for a 'TxOutRef'.
+getTxOutFromRef ::
+  forall effs.
+  ( Member BeamEffect effs
+  )
+  => TxOutRef
+  -> Eff effs (Maybe TxOut)
+getTxOutFromRef = queryOne . queryKeyValue utxoOutRefRows _utxoRowOutRef _utxoRowTxOut
 
 getUtxoSetAtAddress
   :: forall effs.
