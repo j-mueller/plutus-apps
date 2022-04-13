@@ -39,6 +39,7 @@ module Plutus.Contract.Request(
     , utxoRefsAt
     , utxoRefsWithCurrency
     , utxosAt
+    , txOutsAt
     , utxosTxOutTxFromTx
     , txoRefsAt
     , getTip
@@ -412,6 +413,22 @@ utxosAt addr = do
                 $ mapMaybe (\(ref, txOut) -> fmap (ref,) txOut)
                 $ zip utxoRefs txOuts
       pure $ acc <> utxos
+
+
+-- | Get the transaction outputs at an address.
+txOutsAt ::
+    forall w s e.
+    ( AsContractError e
+    )
+    => Address
+    -> Contract w s e [TxOut]
+txOutsAt addr = do
+  foldUtxoRefsAt f [] addr
+  where
+    f acc page = do
+      let utxoRefs = pageItems page
+      txOuts <- traverse txOutFromRef utxoRefs
+      pure $ acc <> catMaybes txOuts
 
 -- | Get the unspent transaction outputs from a 'ChainIndexTx'.
 utxosTxOutTxFromTx ::
