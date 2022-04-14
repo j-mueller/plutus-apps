@@ -60,7 +60,6 @@ module Plutus.Contract.Effects( -- TODO: Move to Requests.Internal
     _MintingPolicyHashResponse,
     _RedeemerHashResponse,
     _UnspentTxOutResponse,
-    _TxOutResponse,
     _TxIdResponse,
     _UtxoSetMembershipResponse,
     _UtxoSetAtResponse,
@@ -93,7 +92,7 @@ import Ledger.Scripts (Validator)
 import Ledger.Slot (Slot, SlotRange)
 import Ledger.Time (POSIXTime, POSIXTimeRange)
 import Ledger.TimeSlot (SlotConversionError)
-import Ledger.Tx (CardanoTx, ChainIndexTxOut, TxOut, getCardanoTxId)
+import Ledger.Tx (CardanoTx, ChainIndexTxOut, getCardanoTxId)
 import Plutus.ChainIndex (Page (pageItems), PageQuery)
 import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), TxosResponse (TxosResponse),
                               UtxosResponse (UtxosResponse))
@@ -212,7 +211,6 @@ chainIndexMatches q r = case (q, r) of
     (StakeValidatorFromHash{}, StakeValidatorHashResponse{}) -> True
     (RedeemerFromHash{}, RedeemerHashResponse{})             -> True
     (UnspentTxOutFromRef{}, UnspentTxOutResponse{})          -> True
-    (TxOutFromRef{}, TxOutResponse{})                        -> True
     (UtxoSetMembership{}, UtxoSetMembershipResponse{})       -> True
     (UtxoSetAtAddress{}, UtxoSetAtResponse{})                -> True
     (UtxoSetWithCurrency{}, UtxoSetWithCurrencyResponse{})   -> True
@@ -230,7 +228,6 @@ data ChainIndexQuery =
   | StakeValidatorFromHash StakeValidatorHash
   | RedeemerFromHash RedeemerHash
   | UnspentTxOutFromRef TxOutRef
-  | TxOutFromRef TxOutRef
   | UtxoSetMembership TxOutRef
   | UtxoSetAtAddress (PageQuery TxOutRef) Credential
   | UtxoSetWithCurrency (PageQuery TxOutRef) AssetClass
@@ -247,7 +244,6 @@ instance Pretty ChainIndexQuery where
         StakeValidatorFromHash h   -> "requesting stake validator from hash" <+> pretty h
         RedeemerFromHash h         -> "requesting redeemer from hash" <+> pretty h
         UnspentTxOutFromRef r      -> "requesting utxo from utxo reference" <+> pretty r
-        TxOutFromRef r             -> "requesting txout from utxo reference" <+> pretty r
         UtxoSetMembership txOutRef -> "whether tx output is part of the utxo set" <+> pretty txOutRef
         UtxoSetAtAddress _ c       -> "requesting utxos located at addresses with the credential" <+> pretty c
         UtxoSetWithCurrency _ ac   -> "requesting utxos containing the asset class" <+> pretty ac
@@ -263,7 +259,6 @@ data ChainIndexResponse =
   | MintingPolicyHashResponse (Maybe MintingPolicy)
   | StakeValidatorHashResponse (Maybe StakeValidator)
   | UnspentTxOutResponse (Maybe ChainIndexTxOut)
-  | TxOutResponse (Maybe TxOut)
   | RedeemerHashResponse (Maybe Redeemer)
   | TxIdResponse (Maybe ChainIndexTx)
   | UtxoSetMembershipResponse IsUtxoResponse
@@ -283,7 +278,6 @@ instance Pretty ChainIndexResponse where
         StakeValidatorHashResponse m -> "Chain index stake validator from hash response:" <+> pretty m
         RedeemerHashResponse r -> "Chain index redeemer from hash response:" <+> pretty r
         UnspentTxOutResponse t -> "Chain index utxo from utxo ref response:" <+> pretty t
-        TxOutResponse t -> "Chain index utxo from utxo ref response:" <+> pretty t
         TxIdResponse t -> "Chain index tx from tx id response:" <+> pretty (_citxTxId <$> t)
         UtxoSetMembershipResponse (IsUtxoResponse tip b) ->
                 "Chain index response whether tx output ref is part of the UTxO set:"

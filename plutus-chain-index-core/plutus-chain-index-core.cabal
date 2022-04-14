@@ -72,7 +72,6 @@ library
         contra-tracer -any,
         cryptonite -any,
         data-default -any,
-        either -any,
         exceptions -any,
         fingertree -any,
         freer-simple -any,

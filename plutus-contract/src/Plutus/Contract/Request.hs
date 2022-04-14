@@ -34,12 +34,10 @@ module Plutus.Contract.Request(
     , stakeValidatorFromHash
     , redeemerFromHash
     , unspentTxOutFromRef
-    , txOutFromRef
     , utxoRefMembership
     , utxoRefsAt
     , utxoRefsWithCurrency
     , utxosAt
-    , txOutsAt
     , utxosTxOutTxFromTx
     , txoRefsAt
     , getTip
@@ -118,7 +116,7 @@ import Ledger (Address, AssetClass, Datum, DatumHash, DiffMilliSeconds, MintingP
 import Ledger.Constraints (TxConstraints)
 import Ledger.Constraints.OffChain (ScriptLookups, UnbalancedTx)
 import Ledger.Constraints.OffChain qualified as Constraints
-import Ledger.Tx (CardanoTx, ChainIndexTxOut, TxOut, ciTxOutValue, getCardanoTxId)
+import Ledger.Tx (CardanoTx, ChainIndexTxOut, ciTxOutValue, getCardanoTxId)
 import Ledger.Typed.Scripts (Any, TypedValidator, ValidatorTypes (DatumType, RedeemerType))
 import Ledger.Value qualified as V
 import Plutus.Contract.Util (loopM)
@@ -134,7 +132,7 @@ import Wallet.Types (ContractInstanceId, EndpointDescription (EndpointDescriptio
                      EndpointValue (EndpointValue, unEndpointValue))
 
 import Plutus.ChainIndex (ChainIndexTx, Page (nextPageQuery, pageItems), PageQuery, txOutRefs)
-import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse (paget), UtxosResponse (page))
+import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse, UtxosResponse (page))
 import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip, TxOutStatus, TxStatus)
 import Plutus.Contract.Error (AsContractError (_ChainIndexContractError, _ConstraintResolutionContractError, _EndpointDecodeContractError, _ResumableContractError, _WalletContractError))
 import Plutus.Contract.Resumable (prompt)
@@ -326,18 +324,6 @@ unspentTxOutFromRef ref = do
     E.UnspentTxOutResponse r -> pure r
     r                        -> throwError $ review _ChainIndexContractError ("UnspentTxOutResponse", r)
 
-txOutFromRef ::
-    forall w s e.
-    ( AsContractError e
-    )
-    => TxOutRef
-    -> Contract w s e (Maybe TxOut)
-txOutFromRef ref = do
-  cir <- pabReq (ChainIndexQueryReq $ E.TxOutFromRef ref) E._ChainIndexQueryResp
-  case cir of
-    E.TxOutResponse r -> pure r
-    r                 -> throwError $ review _ChainIndexContractError ("TxOutResponse", r)
-
 utxoRefMembership ::
     forall w s e.
     ( AsContractError e
@@ -413,39 +399,6 @@ utxosAt addr = do
                 $ mapMaybe (\(ref, txOut) -> fmap (ref,) txOut)
                 $ zip utxoRefs txOuts
       pure $ acc <> utxos
-
--- | Fold through each 'Page's of 'TxOutRef's at a given 'Address', and
--- accumulate the result.
-foldAllUtxoRefsAt ::
-    forall w s e a.
-    ( AsContractError e
-    )
-    => (a -> Page TxOutRef -> Contract w s e a) -- ^ Accumulator function
-    -> a -- ^ Initial value
-    -> Address -- ^ Address which contain the UTXOs
-    -> Contract w s e a
-foldAllUtxoRefsAt f ini addr = go ini (Just def)
-  where
-    go acc Nothing = pure acc
-    go acc (Just pq) = do
-      page <- paget <$> txoRefsAt pq addr
-      newAcc <- f acc page
-      go newAcc (nextPageQuery page)
-
--- | Get the transaction outputs at an address.
-txOutsAt ::
-    forall w s e.
-    ( AsContractError e
-    )
-    => Address
-    -> Contract w s e [TxOut]
-txOutsAt addr = do
-  foldAllUtxoRefsAt f [] addr
-  where
-    f acc page = do
-      let utxoRefs = pageItems page
-      txOuts <- traverse txOutFromRef utxoRefs
-      pure $ acc <> catMaybes txOuts
 
 -- | Get the unspent transaction outputs from a 'ChainIndexTx'.
 utxosTxOutTxFromTx ::
