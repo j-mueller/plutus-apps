@@ -60,7 +60,7 @@ import Plutus.ChainIndex.Types (ChainSyncBlock (..), Depth (..), Diagnostics (..
 import Plutus.ChainIndex.UtxoState (InsertUtxoSuccess (..), RollbackResult (..), UtxoIndex)
 import Plutus.ChainIndex.UtxoState qualified as UtxoState
 import Plutus.V1.Ledger.Ada qualified as Ada
-import Plutus.V1.Ledger.Api (Credential)
+import Plutus.V1.Ledger.Api (Credential (..))
 
 type ChainIndexState = UtxoIndex TxUtxoBalance
 
@@ -143,10 +143,28 @@ queryOne = fmap (fmap fromDbValue) . selectOne
 getUtxoutFromRef ::
   forall effs.
   ( Member BeamEffect effs
+  , Member (LogMsg ChainIndexLog) effs
   )
   => TxOutRef
   -> Eff effs (Maybe ChainIndexTxOut)
-getUtxoutFromRef = queryOne . queryKeyValue utxoOutRefRows _utxoRowOutRef _utxoRowTxOut
+getUtxoutFromRef txOutRef = do
+    mTxOut <- queryOne $ queryKeyValue utxoOutRefRows _utxoRowOutRef _utxoRowTxOut txOutRef
+    case mTxOut of
+      Nothing -> logWarn (TxOutNotFound txOutRef) >> pure Nothing
+      Just txout@TxOut { txOutAddress, txOutValue, txOutDatumHash } ->
+        case addressCredential txOutAddress of
+          PubKeyCredential _ -> pure $ Just $ PublicKeyChainIndexTxOut txOutAddress txOutValue
+          ScriptCredential vh ->
+            case txOutDatumHash of
+              Nothing -> do
+                -- If the txout comes from a script address, the Datum should not be Nothing
+                logWarn $ NoDatumScriptAddr txout
+                pure Nothing
+              Just dh -> do
+                v <- maybe (Left vh) Right <$> getScriptFromHash vh
+                d <- maybe (Left dh) Right <$> getDatumFromHash dh
+                pure $ Just $ ScriptChainIndexTxOut txOutAddress v d txOutValue
+
 
 getUtxoSetAtAddress
   :: forall effs.
