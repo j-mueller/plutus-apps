@@ -49,7 +49,6 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address (PaymentPubKeyHash)
 import Ledger.CardanoWallet (MockWallet)
 import Ledger.CardanoWallet qualified as CW
-import Ledger.Fee (FeeConfig)
 import Ledger.TimeSlot (SlotConfig)
 import Ledger.Tx (CardanoTx)
 import Plutus.ChainIndex (ChainIndexQueryEffect)
@@ -112,25 +111,24 @@ handleMultiWallet :: forall m effs.
     , LastMember m effs
     , MonadIO m
     )
-    => FeeConfig
-    -> MultiWalletEffect ~> Eff effs
-handleMultiWallet feeCfg = \case
-    MultiWallet wallet action -> do
+    => MultiWalletEffect ~> Eff effs
+handleMultiWallet = \case
+    MultiWallet (Wallet.Wallet _ walletId) action -> do
         wallets <- get @Wallets
-        case Map.lookup wallet wallets of
+        case Map.lookup walletId wallets of
             Just walletState -> do
                 (x, newState) <- runState walletState
                     $ action
                         & raiseEnd
-                        & interpret (Wallet.handleWallet feeCfg)
+                        & interpret Wallet.handleWallet
                         & interpret (mapLog @TxBalanceMsg @WalletMsg Balancing)
-                put @Wallets (wallets & at wallet ?~ newState)
+                put @Wallets (wallets & at walletId ?~ newState)
                 pure x
             Nothing -> throwError $ WAPI.OtherError "Wallet not found"
     CreateWallet funds -> do
         wallets <- get @Wallets
         mockWallet <- newWallet
-        let walletId = Wallet.Wallet $ Wallet.WalletId $ CW.mwWalletId mockWallet
+        let walletId = Wallet.WalletId (CW.mwWalletId mockWallet)
             wallets' = Map.insert walletId (Wallet.fromMockWallet mockWallet) wallets
             pkh = CW.paymentPubKeyHash mockWallet
         put wallets'
@@ -140,12 +138,12 @@ handleMultiWallet feeCfg = \case
         let sourceWallet = Wallet.fromMockWallet (CW.knownMockWallet 2)
         _ <- evalState sourceWallet $
             interpret (mapLog @TxBalanceMsg @WalletMsg Balancing)
-            $ interpret (Wallet.handleWallet feeCfg)
+            $ interpret Wallet.handleWallet
             $ distributeNewWalletFunds funds pkh
-        return $ WalletInfo{wiWallet = walletId, wiPaymentPubKeyHash = pkh}
+        return $ WalletInfo{wiWallet = Wallet.toMockWallet mockWallet, wiPaymentPubKeyHash = pkh}
     GetWalletInfo wllt -> do
         wallets <- get @Wallets
-        return $ fmap fromWalletState $ Map.lookup (Wallet.Wallet wllt) wallets
+        return $ fmap fromWalletState $ Map.lookup wllt wallets
 
 -- | Process wallet effects. Retain state and yield HTTP400 on error
 --   or set new state on success.
@@ -156,18 +154,16 @@ processWalletEffects ::
     -> ChainSyncHandle -- ^ node client
     -> ClientEnv          -- ^ chain index client
     -> MVar Wallets   -- ^ wallets state
-    -> FeeConfig
     -> SlotConfig
     -> Eff (WalletEffects IO) a -- ^ wallet effect
     -> m a
-processWalletEffects trace txSendHandle chainSyncHandle chainIndexEnv mVarState feeCfg slotCfg action = do
+processWalletEffects trace txSendHandle chainSyncHandle chainIndexEnv mVarState slotCfg action = do
     oldState <- liftIO $ takeMVar mVarState
     result <- liftIO $ runWalletEffects trace
                                         txSendHandle
                                         chainSyncHandle
                                         chainIndexEnv
                                         oldState
-                                        feeCfg
                                         slotCfg
                                         action
     case result of
@@ -185,12 +181,11 @@ runWalletEffects ::
     -> ChainSyncHandle -- ^ node client
     -> ClientEnv -- ^ chain index client
     -> Wallets -- ^ current state
-    -> FeeConfig
     -> SlotConfig
     -> Eff (WalletEffects IO) a -- ^ wallet effect
     -> IO (Either ServerError (a, Wallets))
-runWalletEffects trace txSendHandle chainSyncHandle chainIndexEnv wallets feeCfg slotCfg action =
-    reinterpret (handleMultiWallet feeCfg) action
+runWalletEffects trace txSendHandle chainSyncHandle chainIndexEnv wallets slotCfg action =
+    reinterpret handleMultiWallet action
     & interpret (LM.handleLogMsgTrace trace)
     & reinterpret2 (NodeClient.handleNodeClientClient slotCfg)
     & runReader chainSyncHandle
