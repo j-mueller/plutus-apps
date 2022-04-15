@@ -95,6 +95,7 @@ handleQuery = \case
             tp           -> pure (IsUtxoResponse tp (TxUtxoBalance.isUnspentOutput r utxoState))
     UtxoSetAtAddress pageQuery cred -> getUtxoSetAtAddress pageQuery cred
     UnspentTxOutSetAtAddress pageQuery cred -> getTxOutSetAtAddress pageQuery cred
+    DatumsAtAddress cred -> getDatumsAtAddress cred
     UtxoSetWithCurrency pageQuery assetClass ->
       getUtxoSetWithCurrency pageQuery assetClass
     TxoSetAtAddress pageQuery cred -> getTxoSetAtAddress pageQuery cred
@@ -269,6 +270,22 @@ getTxOutSetAtAddress pageQuery cred = do
       let txouts = [ (t, o) | (t, mo) <- List.zip (pageItems page) mtxouts, o <- maybeToList mo]
       pure $ QueryResponse txouts (nextPageQuery page)
 
+
+
+getDatumsAtAddress :: Member BeamEffect effs => Credential -> Eff effs [Datum]
+getDatumsAtAddress (toDbValue -> cred) = do
+  let query =
+        select
+        $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+        $ all_ (addressRows db)
+  row_l <- queryList query
+  catMaybes <$> mapM f_map row_l
+
+  where
+    f_map :: Member BeamEffect effs => (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) -> Eff effs (Maybe Datum)
+    f_map (_, _, _, Just d)  = pure (Just d)
+    f_map (_, _, Just dh, _) = getDatumFromHash dh
+    f_map _                  = pure Nothing
 
 getUtxoSetWithCurrency
   :: forall effs.
@@ -543,17 +560,27 @@ insertRows = getConst . zipTables Proxy (\tbl (InsertRows rows) -> Const $ AddRo
 
 fromTx :: ChainIndexTx -> Db InsertRows
 fromTx tx = mempty
-    { datumRows = fromMap citxData
+    { datumRows = fromMap citxData <> inlineDatums
     , scriptRows = fromMap citxScripts
     , redeemerRows = fromPairs (Map.toList . txRedeemersWithHash)
     , txRows = InsertRows [toDbValue (_citxTxId tx, tx)]
-    , addressRows = fromPairs (fmap credential . txOutsWithRef)
+    , addressRows = InsertRows (toDbValue <$> fmap credential outputs)
     , assetClassRows = fromPairs (concatMap assetClasses . txOutsWithRef)
     }
     where
-        credential :: (ChainIndexTxOut, TxOutRef) -> (Credential, TxOutRef)
-        credential (ChainIndexTxOut{citoAddress=Address{addressCredential}}, ref) =
-          (addressCredential, ref)
+        outputs = txOutsWithRef $ tx
+        credential :: (ChainIndexTxOut, TxOutRef) -> (Credential, TxOutRef, Maybe DatumHash, Maybe Datum)
+        credential (ChainIndexTxOut{citoAddress=Address{addressCredential}, citoDatum}, ref) =
+          let (hsh, dt) = case citoDatum of
+                      OutputDatumHash h -> (Just h,  Nothing)
+                      OutputDatum dt'   -> (Nothing, Just dt')
+                      NoOutputDatum     -> (Nothing, Nothing)
+          in (addressCredential, ref, hsh, dt)
+        inlineDatums :: InsertRows (TableEntity DatumRowT)
+        inlineDatums = 
+            let f (OutputDatum dt) = Just (datumHash dt, dt)
+                f _                = Nothing
+            in InsertRows (toDbValue <$> mapMaybe (f . citoDatum . fst) outputs)
         assetClasses :: (ChainIndexTxOut, TxOutRef) -> [(AssetClass, TxOutRef)]
         assetClasses (ChainIndexTxOut{citoValue}, ref) =
           fmap (\(c, t, _) -> (AssetClass (c, t), ref))

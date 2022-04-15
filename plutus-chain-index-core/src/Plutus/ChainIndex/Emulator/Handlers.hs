@@ -37,7 +37,7 @@ import Data.Set qualified as Set
 import GHC.Generics (Generic)
 import Ledger.Address (Address (addressCredential))
 import Ledger.Scripts (ScriptHash (ScriptHash))
-import Ledger.Tx (TxId, TxOutRef (..))
+import Ledger.Tx (TxId, TxOutRef (..), ciTxOutScriptDatum)
 import Ledger.Tx qualified as L (ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut))
 import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse),
                               TxosResponse (TxosResponse), UtxosResponse (UtxosResponse))
@@ -220,7 +220,13 @@ handleQuery = \case
             mtxouts <- mapM getUtxoutFromRef (pageItems page)
             let txouts = [ (t, o) | (t, mo) <- List.zip (pageItems page) mtxouts, o <- maybeToList mo]
             pure $ QueryResponse txouts (nextPageQuery page)
-
+    DatumsAtAddress cred -> do
+      state <- get
+      let outRefs = Set.toList $ fromMaybe mempty $ view (diskState . addressMap . at cred) state
+          getHash h = gets (view $ diskState . dataMap . at h)
+      txouts <- catMaybes <$> mapM getTxOutFromRef outRefs
+      mdatum_l <- mapM getHash $ catMaybes $ map (fmap fst . preview ciTxOutScriptDatum) txouts
+      pure $ catMaybes mdatum_l
     UtxoSetWithCurrency pageQuery assetClass -> do
         state <- get
         let outRefs = view (diskState . assetClassMap . at assetClass) state

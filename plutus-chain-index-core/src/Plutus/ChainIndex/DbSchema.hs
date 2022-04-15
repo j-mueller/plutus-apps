@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds      #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveAnyClass       #-}
@@ -25,6 +26,7 @@ module Plutus.ChainIndex.DbSchema where
 
 import Codec.Serialise (Serialise, deserialiseOrFail, serialise)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
@@ -40,12 +42,13 @@ import Ledger (BlockId (..), ChainIndexTxOut (..), Slot)
 import Plutus.ChainIndex.Tx (ChainIndexTx)
 import Plutus.ChainIndex.Tx qualified as CI
 import Plutus.ChainIndex.Types (BlockNumber (..), Tip (..))
-import Plutus.V1.Ledger.Api (Credential, Datum, DatumHash (..), MintingPolicy, MintingPolicyHash (..), Redeemer,
+import Plutus.V1.Ledger.Api (Credential, Datum(..), DatumHash (..), MintingPolicy, MintingPolicyHash (..), Redeemer,
                              RedeemerHash (..), Script, StakeValidator, StakeValidatorHash (..), TxId (..),
                              TxOutRef (..), Validator, ValidatorHash (..))
 import Plutus.V1.Ledger.Scripts (ScriptHash (..))
 import Plutus.V1.Ledger.Value (AssetClass)
 import PlutusTx.Builtins qualified as PlutusTx
+import PlutusTx.Builtins.Internal (BuiltinByteString (..), emptyByteString)
 
 data DatumRowT f = DatumRow
     { _datumRowHash  :: Columnar f ByteString
@@ -92,9 +95,13 @@ instance Table TxRowT where
     primaryKey = TxRowId . _txRowTxId
 
 data AddressRowT f = AddressRow
-    { _addressRowCred   :: Columnar f ByteString
-    , _addressRowOutRef :: Columnar f ByteString
+    { _addressRowCred      :: Columnar f ByteString
+    , _addressRowOutRef    :: Columnar f ByteString
+    , _addressRowDatumHash :: Columnar f ByteString
+    , _addressRowDatum     :: Columnar f ByteString
     } deriving (Generic, Beamable)
+-- to keep datumHash in address row
+--  useful to retrieve all datum associated to a partial address
 
 type AddressRow = AddressRowT Identity
 
@@ -102,7 +109,7 @@ instance Table AddressRowT where
     -- We also need an index on just the _addressRowCred column, but the primary key index provides this
     -- as long as _addressRowCred is the first column in the primary key.
     data PrimaryKey AddressRowT f = AddressRowId (Columnar f ByteString) (Columnar f ByteString) deriving (Generic, Beamable)
-    primaryKey (AddressRow c o) = AddressRowId c o
+    primaryKey (AddressRow c o _ _) = AddressRowId c o
 
 data AssetClassRowT f = AssetClassRow
     { _assetClassRowAssetClass :: Columnar f ByteString
@@ -269,6 +276,13 @@ deriving via Serialisable Credential instance HasDbType Credential
 deriving via Serialisable AssetClass instance HasDbType AssetClass
 deriving via Serialisable Script instance HasDbType Script
 
+instance HasDbType (Maybe Datum) where
+    type DbType (Maybe Datum) = DbType Datum
+    toDbValue Nothing  = toDbValue emptyByteString
+    toDbValue (Just x) = toDbValue x
+    fromDbValue x | BS.null x = Nothing
+                  | otherwise = Just (fromDbValue @Datum x)
+
 instance HasDbType Slot where
     type DbType Slot = Word64 -- In Plutus Slot is Integer, but in the Cardano API it is Word64, so this is safe
     toDbValue = fromIntegral
@@ -306,10 +320,20 @@ instance HasDbType (TxId, ChainIndexTx) where
     toDbValue (txId, tx) = TxRow (toDbValue txId) (toDbValue tx)
     fromDbValue (TxRow txId tx) = (fromDbValue txId, fromDbValue tx)
 
-instance HasDbType (Credential, TxOutRef) where
-    type DbType (Credential, TxOutRef) = AddressRow
-    toDbValue (cred, outRef) = AddressRow (toDbValue cred) (toDbValue outRef)
-    fromDbValue (AddressRow cred outRef) = (fromDbValue cred, fromDbValue outRef)
+instance HasDbType (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) where
+  type DbType (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) = AddressRow
+  toDbValue (cred, outRef, Nothing, dd) =
+    let nothing = (toDbValue $ DatumHash emptyByteString) 
+    in AddressRow (toDbValue cred) (toDbValue outRef) nothing (toDbValue dd)
+  toDbValue (cred, outRef, Just dh, dd) = AddressRow (toDbValue cred) (toDbValue outRef) (toDbValue dh) (toDbValue dd)
+  fromDbValue (AddressRow cred outRef dh dt) =
+    let dh'@(DatumHash (BuiltinByteString bs)) = fromDbValue dh
+    in
+      if BS.null bs then
+        (fromDbValue cred, fromDbValue outRef, Nothing, fromDbValue dt)
+      else
+        (fromDbValue cred, fromDbValue outRef, Just dh', fromDbValue dt)
+
 
 instance HasDbType (AssetClass, TxOutRef) where
     type DbType (AssetClass, TxOutRef) = AssetClassRow
