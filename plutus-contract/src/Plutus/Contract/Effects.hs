@@ -213,6 +213,7 @@ chainIndexMatches q r = case (q, r) of
     (UnspentTxOutFromRef{}, UnspentTxOutResponse{})          -> True
     (UtxoSetMembership{}, UtxoSetMembershipResponse{})       -> True
     (UtxoSetAtAddress{}, UtxoSetAtResponse{})                -> True
+    (DatumsAtAddress{}, DatumsAtResponse{})                  -> True
     (UtxoSetWithCurrency{}, UtxoSetWithCurrencyResponse{})   -> True
     (TxoSetAtAddress{}, TxoSetAtResponse{})                  -> True
     (GetTip{}, GetTipResponse{})                             -> True
@@ -230,6 +231,7 @@ data ChainIndexQuery =
   | UnspentTxOutFromRef TxOutRef
   | UtxoSetMembership TxOutRef
   | UtxoSetAtAddress (PageQuery TxOutRef) Credential
+  | DatumsAtAddress Credential
   | UtxoSetWithCurrency (PageQuery TxOutRef) AssetClass
   | TxoSetAtAddress (PageQuery TxOutRef) Credential
   | GetTip
@@ -246,6 +248,7 @@ instance Pretty ChainIndexQuery where
         UnspentTxOutFromRef r      -> "requesting utxo from utxo reference" <+> pretty r
         UtxoSetMembership txOutRef -> "whether tx output is part of the utxo set" <+> pretty txOutRef
         UtxoSetAtAddress _ c       -> "requesting utxos located at addresses with the credential" <+> pretty c
+        DatumsAtAddress c          -> "requesting datums located at addresses with the credential" <+> pretty c
         UtxoSetWithCurrency _ ac   -> "requesting utxos containing the asset class" <+> pretty ac
         TxoSetAtAddress _ c        -> "requesting txos located at addresses with the credential" <+> pretty c
         GetTip                     -> "requesting the tip of the chain index"
@@ -263,6 +266,7 @@ data ChainIndexResponse =
   | TxIdResponse (Maybe ChainIndexTx)
   | UtxoSetMembershipResponse IsUtxoResponse
   | UtxoSetAtResponse UtxosResponse
+  | DatumsAtResponse [Datum]
   | UtxoSetWithCurrencyResponse UtxosResponse
   | TxIdsResponse [ChainIndexTx]
   | TxoSetAtResponse TxosResponse
@@ -290,6 +294,7 @@ instance Pretty ChainIndexResponse where
             <+> pretty tip
             <+> "and utxo refs are"
             <+> hsep (fmap pretty $ pageItems txOutRefPage)
+        DatumsAtResponse d -> "Chain index datums from address response:" <+> pretty d
         UtxoSetWithCurrencyResponse (UtxosResponse tip txOutRefPage) ->
                 "Chain index UTxO with asset class response:"
             <+> "Current tip is"

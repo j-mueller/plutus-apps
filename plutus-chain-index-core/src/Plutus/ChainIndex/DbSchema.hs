@@ -25,6 +25,7 @@ module Plutus.ChainIndex.DbSchema where
 
 import Codec.Serialise (Serialise, deserialiseOrFail, serialise)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
@@ -42,7 +43,7 @@ import Ledger (AssetClass, BlockId (..), ChainIndexTxOut (..), Datum, DatumHash 
 import Plutus.ChainIndex.Tx (ChainIndexTx)
 import Plutus.ChainIndex.Types (BlockNumber (..), Tip (..))
 import Plutus.V1.Ledger.Api (Credential)
-import PlutusTx.Builtins.Internal (BuiltinByteString (..))
+import PlutusTx.Builtins.Internal (BuiltinByteString (..), emptyByteString)
 
 data DatumRowT f = DatumRow
     { _datumRowHash  :: Columnar f ByteString
@@ -78,17 +79,20 @@ instance Table RedeemerRowT where
     primaryKey = RedeemerRowId . _redeemerRowHash
 
 data AddressRowT f = AddressRow
-    { _addressRowCred   :: Columnar f ByteString
-    , _addressRowOutRef :: Columnar f ByteString
+    { _addressRowCred      :: Columnar f ByteString
+    , _addressRowOutRef    :: Columnar f ByteString
+    , _addressRowDatumHash :: Columnar f ByteString
     } deriving (Generic, Beamable)
+-- to keep datumHash in address row
+--  useful to retrieve all datum associated to a partial address
 
 type AddressRow = AddressRowT Identity
 
 instance Table AddressRowT where
     -- We also need an index on just the _addressRowCred column, but the primary key index provides this
     -- as long as _addressRowCred is the first column in the primary key.
-    data PrimaryKey AddressRowT f = AddressRowId (Columnar f ByteString) (Columnar f ByteString) deriving (Generic, Beamable)
-    primaryKey (AddressRow c o) = AddressRowId c o
+    data PrimaryKey AddressRowT f = AddressRowId (Columnar f ByteString) (Columnar f ByteString) (Columnar f ByteString) deriving (Generic, Beamable)
+    primaryKey (AddressRow c o d) = AddressRowId c o d
 
 data AssetClassRowT f = AssetClassRow
     { _assetClassRowAssetClass :: Columnar f ByteString
@@ -284,10 +288,17 @@ instance HasDbType (RedeemerHash, Redeemer) where
 --     toDbValue (outRef, txOut) = UtxoRow (toDbValue outRef) (toDbValue txOut)
 --     fromDbValue (UtxoRow outRef txOut) = (fromDbValue outRef, fromDbValue txOut)
 
-instance HasDbType (Credential, TxOutRef) where
-    type DbType (Credential, TxOutRef) = AddressRow
-    toDbValue (cred, outRef) = AddressRow (toDbValue cred) (toDbValue outRef)
-    fromDbValue (AddressRow cred outRef) = (fromDbValue cred, fromDbValue outRef)
+instance HasDbType (Credential, TxOutRef, Maybe DatumHash) where
+  type DbType (Credential, TxOutRef, Maybe DatumHash) = AddressRow
+  toDbValue (cred, outRef, Nothing) = AddressRow (toDbValue cred) (toDbValue outRef) (toDbValue $ DatumHash emptyByteString)
+  toDbValue (cred, outRef, Just dh) = AddressRow (toDbValue cred) (toDbValue outRef) (toDbValue dh)
+  fromDbValue (AddressRow cred outRef dh) =
+    let dh'@(DatumHash (BuiltinByteString bs)) = fromDbValue dh in
+      if BS.null bs then
+        (fromDbValue cred, fromDbValue outRef, Nothing)
+      else
+        (fromDbValue cred, fromDbValue outRef, Just dh')
+
 
 instance HasDbType (AssetClass, TxOutRef) where
     type DbType (AssetClass, TxOutRef) = AssetClassRow

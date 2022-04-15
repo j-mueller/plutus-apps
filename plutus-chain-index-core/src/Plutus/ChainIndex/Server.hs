@@ -64,6 +64,7 @@ serveChainIndex =
     :<|> (E.unspentTxOutFromRef >=> handleMaybe)
     :<|> E.utxoSetMembership
     :<|> (\(UtxoAtAddressRequest pq c) -> E.utxoSetAtAddress (fromMaybe def pq) c)
+    :<|> E.datumsAtAddress
     :<|> (\(UtxoWithCurrencyRequest pq c) -> E.utxoSetWithCurrency (fromMaybe def pq) c)
     :<|> (\(TxoAtAddressRequest pq c) -> E.txoSetAtAddress (fromMaybe def pq) c)
     :<|> E.getTip

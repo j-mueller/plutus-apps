@@ -148,6 +148,7 @@ type API
     :<|> "unspent-tx-out" :> Description "Get an unspent transaction output from its reference." :> ReqBody '[JSON] TxOutRef :> Post '[JSON] ChainIndexTxOut
     :<|> "is-utxo" :> Description "Check if the reference is an UTxO." :> ReqBody '[JSON] TxOutRef :> Post '[JSON] IsUtxoResponse
     :<|> "utxo-at-address" :> Description "Get all UTxOs at an address." :> ReqBody '[JSON] UtxoAtAddressRequest :> Post '[JSON] UtxosResponse
+    :<|> "datums-at-address" :> Description "Get all Datums at an address." :> ReqBody '[JSON] Credential :> Post '[JSON] [Datum]
     :<|> "utxo-with-currency" :> Description "Get all UTxOs with a currency." :> ReqBody '[JSON] UtxoWithCurrencyRequest :> Post '[JSON] UtxosResponse
     :<|> "txo-at-address" :> Description "Get TxOs at an address." :> ReqBody '[JSON] TxoAtAddressRequest :> Post '[JSON] TxosResponse
     :<|> "tip" :> Description "Get the current synced tip." :> Get '[JSON] Tip
