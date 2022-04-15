@@ -283,11 +283,6 @@ instance HasDbType (RedeemerHash, Redeemer) where
     toDbValue (hash, redeemer) = RedeemerRow (toDbValue hash) (toDbValue redeemer)
     fromDbValue (RedeemerRow hash redeemer) = (fromDbValue hash, fromDbValue redeemer)
 
--- instance HasDbType (TxOutRef, TxOut) where
---     type DbType (TxOutRef, TxOut) = UtxoRow
---     toDbValue (outRef, txOut) = UtxoRow (toDbValue outRef) (toDbValue txOut)
---     fromDbValue (UtxoRow outRef txOut) = (fromDbValue outRef, fromDbValue txOut)
-
 instance HasDbType (Credential, TxOutRef, Maybe DatumHash) where
   type DbType (Credential, TxOutRef, Maybe DatumHash) = AddressRow
   toDbValue (cred, outRef, Nothing) = AddressRow (toDbValue cred) (toDbValue outRef) (toDbValue $ DatumHash emptyByteString)
@@ -298,7 +293,6 @@ instance HasDbType (Credential, TxOutRef, Maybe DatumHash) where
         (fromDbValue cred, fromDbValue outRef, Nothing)
       else
         (fromDbValue cred, fromDbValue outRef, Just dh')
-
 
 instance HasDbType (AssetClass, TxOutRef) where
     type DbType (AssetClass, TxOutRef) = AssetClassRow
