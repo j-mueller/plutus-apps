@@ -89,6 +89,7 @@ handleQuery = \case
             TipAtGenesis -> throwError QueryFailedNoTip
             tp           -> pure (IsUtxoResponse tp (TxUtxoBalance.isUnspentOutput r utxoState))
     UtxoSetAtAddress pageQuery cred -> getUtxoSetAtAddress pageQuery cred
+    DatumsAtAddress cred -> getDatumsAtAddress cred
     UtxoSetWithCurrency pageQuery assetClass ->
       getUtxoSetWithCurrency pageQuery assetClass
     TxoSetAtAddress pageQuery cred -> getTxoSetAtAddress pageQuery cred
@@ -138,6 +139,15 @@ queryOne ::
     ) => SqlSelect Sqlite (DbType o)
     -> Eff effs (Maybe o)
 queryOne = fmap (fmap fromDbValue) . selectOne
+
+
+queryList ::
+    ( Member BeamEffect effs
+    , HasDbType o
+    ) => SqlSelect Sqlite (DbType o)
+    -> Eff effs [o]
+queryList = fmap (fmap fromDbValue) . selectList
+
 
 -- | Get the 'ChainIndexTxOut' for a 'TxOutRef'.
 getUtxoutFromRef ::
@@ -196,6 +206,21 @@ getUtxoSetAtAddress pageQuery (toDbValue -> cred) = do
           let page = fmap fromDbValue outRefs
 
           pure (UtxosResponse tp page)
+
+
+getDatumsAtAddress :: Member BeamEffect effs => Credential -> Eff effs [Datum]
+getDatumsAtAddress (toDbValue -> cred) = do
+  let query =
+        select
+        $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+        $ all_ (addressRows db)
+  row_l <- queryList query
+  catMaybes <$> mapM f_map row_l
+
+  where
+    f_map :: Member BeamEffect effs => (Credential, TxOutRef, Maybe DatumHash) -> Eff effs (Maybe Datum)
+    f_map (_, _, Nothing) = pure Nothing
+    f_map (_, _, Just dh) = getDatumFromHash dh
 
 getUtxoSetWithCurrency
   :: forall effs.
@@ -418,13 +443,13 @@ fromTx tx = mempty
     { datumRows = fromMap citxData
     , scriptRows = fromMap citxScripts
     , redeemerRows = fromMap citxRedeemers
-    , addressRows = fromPairs (fmap credential . txOutsWithRef)
+    , addressRows = InsertRows . fmap toDbValue . (fmap credential . txOutsWithRef) $ tx
     , assetClassRows = fromPairs (concatMap assetClasses . txOutsWithRef)
     }
     where
-        credential :: (TxOut, TxOutRef) -> (Credential, TxOutRef)
-        credential (TxOut{txOutAddress=Address{addressCredential}}, ref) =
-          (addressCredential, ref)
+        credential :: (TxOut, TxOutRef) -> (Credential, TxOutRef, Maybe DatumHash)
+        credential (TxOut{txOutAddress=Address{addressCredential}, txOutDatumHash}, ref) =
+          (addressCredential, ref, txOutDatumHash)
         assetClasses :: (TxOut, TxOutRef) -> [(AssetClass, TxOutRef)]
         assetClasses (TxOut{txOutValue}, ref) =
           fmap (\(c, t, _) -> (AssetClass (c, t), ref))

@@ -35,12 +35,14 @@ module Plutus.Contract.Test(
     , assertOutcome
     , assertInstanceLog
     , assertNoFailedTransactions
+    , assertValidatedTransactionCount
     , assertFailedTransaction
     , assertHooks
     , assertResponses
     , assertUserLog
     , assertBlockchain
     , assertChainEvents
+    , assertChainEvents'
     , assertAccumState
     , Shrinking(..)
     , assertResumableResult
@@ -108,7 +110,7 @@ import Test.Tasty.Providers (TestTree)
 
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints.OffChain (UnbalancedTx)
-import Ledger.Tx (Tx)
+import Ledger.Tx (Tx, onCardanoTx)
 import Plutus.Contract.Effects qualified as Requests
 import Plutus.Contract.Request qualified as Request
 import Plutus.Contract.Resumable (Request (..), Response (..))
@@ -603,11 +605,16 @@ assertBlockchain predicate = TracePredicate $
 
 -- | An assertion about the chain events
 assertChainEvents :: ([ChainEvent] -> Bool) -> TracePredicate
-assertChainEvents predicate = TracePredicate $
+assertChainEvents = assertChainEvents' (const "")
+
+-- | An assertion about the chain events with a custom error message
+assertChainEvents' :: ([ChainEvent] -> String) -> ([ChainEvent] -> Bool) -> TracePredicate
+assertChainEvents' logMsg predicate = TracePredicate $
     flip postMapM (L.generalize Folds.chainEvents) $ \evts -> do
         let passing = predicate evts
         unless passing $ do
-            tell @(Doc Void) $ "Chain events do not match predicate."
+            let msg = logMsg evts
+            tell @(Doc Void) $ "Chain events do not match predicate" <> if null msg then "" else ":" <+> fromString msg
             traverse_ (tell @(Doc Void) . pretty) evts
         pure passing
 
@@ -619,7 +626,7 @@ assertFailedTransaction predicate = TracePredicate $
         [] -> do
             tell @(Doc Void) $ "No transactions failed to validate."
             pure False
-        xs -> pure (all (\(_, t, e, evts) -> predicate t e evts) xs)
+        xs -> pure (all (\(_, t, e, evts, _) -> onCardanoTx (\t' -> predicate t' e evts) (const True) t) xs)
 
 -- | Assert that no transaction failed to validate.
 assertNoFailedTransactions :: TracePredicate
@@ -627,9 +634,21 @@ assertNoFailedTransactions = TracePredicate $
     flip postMapM (L.generalize $ Folds.failedTransactions Nothing) $ \case
         [] -> pure True
         xs -> do
-            let prettyTxFail (i, _, err, _) = pretty i <> colon <+> pretty err
+            let prettyTxFail (i, _, err, _, _) = pretty i <> colon <+> pretty err
             tell @(Doc Void) $ vsep ("Transactions failed to validate:" : fmap prettyTxFail xs)
             pure False
+
+-- | Assert that n transactions validated, and no transaction failed to validate.
+assertValidatedTransactionCount :: Int -> TracePredicate
+assertValidatedTransactionCount expected =
+    assertNoFailedTransactions
+    .&&.
+    TracePredicate (flip postMapM (L.generalize Folds.validatedTransactions) $ \xs ->
+        let actual = length xs - 1 in -- ignore the initial wallet distribution transaction
+        if actual == expected then pure True else do
+            tell @(Doc Void) $ "Unexpected number of validated transactions:" <+> pretty actual
+            pure False
+    )
 
 assertInstanceLog ::
     ContractInstanceTag

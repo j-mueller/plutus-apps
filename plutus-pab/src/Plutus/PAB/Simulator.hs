@@ -99,11 +99,10 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Time.Units (Millisecond)
 import Ledger (Address, Blockchain, CardanoTx, PaymentPubKeyHash, TxId, TxOut (TxOut, txOutAddress, txOutValue),
-               eitherTx, txFee, txId)
+               eitherTx, getCardanoTxFee, getCardanoTxId, txId)
 import Ledger.Ada qualified as Ada
 import Ledger.CardanoWallet (MockWallet)
 import Ledger.CardanoWallet qualified as CW
-import Ledger.Fee (FeeConfig)
 import Ledger.Index qualified as UtxoIndex
 import Ledger.TimeSlot (SlotConfig (SlotConfig, scSlotLength))
 import Ledger.Value (Value, flattenValue)
@@ -178,7 +177,7 @@ initialState :: forall t. IO (SimulatorState t)
 initialState = do
     let initialDistribution = Map.fromList $ fmap (, Ada.adaValueOf 100_000) knownWallets
         Emulator.EmulatorState{Emulator._chainState} = Emulator.initialState (def & Emulator.initialChainState .~ Left initialDistribution)
-        initialWallets = Map.fromList $ fmap (\w -> (Wallet.Wallet $ Wallet.WalletId $ CW.mwWalletId w, initialAgentState w)) CW.knownMockWallets
+        initialWallets = Map.fromList $ fmap (\w -> (Wallet.toMockWallet w, initialAgentState w)) CW.knownMockWallets
     STM.atomically $
         SimulatorState
             <$> STM.newTQueue
@@ -205,11 +204,10 @@ mkSimulatorHandlers ::
     ( Pretty (Contract.ContractDef t)
     , HasDefinitions (Contract.ContractDef t)
     )
-    => FeeConfig
-    -> SlotConfig
+    => SlotConfig
     -> SimulatorContractHandler t -- ^ Making calls to the contract (see 'Plutus.PAB.Effects.Contract.ContractTest.handleContractTest' for an example)
     -> SimulatorEffectHandlers t
-mkSimulatorHandlers feeCfg slotCfg handleContractEffect =
+mkSimulatorHandlers slotCfg handleContractEffect =
     EffectHandlers
         { initialiseEnvironment =
             (,,)
@@ -220,7 +218,7 @@ mkSimulatorHandlers feeCfg slotCfg handleContractEffect =
             interpret handleContractStore
         , handleContractEffect
         , handleLogMessages = handleLogSimulator @t
-        , handleServicesEffects = handleServicesSimulator @t feeCfg slotCfg
+        , handleServicesEffects = handleServicesSimulator @t slotCfg
         , handleContractDefinitionEffect =
             interpret $ \case
                 Contract.AddDefinition _ -> pure () -- not supported
@@ -262,13 +260,12 @@ handleServicesSimulator ::
     , LastMember IO effs
     , Member (Error PABError) effs
     )
-    => FeeConfig
-    -> SlotConfig
+    => SlotConfig
     -> Wallet
     -> Maybe ContractInstanceId
     -> Eff (WalletEffect ': ChainIndexQueryEffect ': NodeClientEffect ': effs)
     ~> Eff effs
-handleServicesSimulator feeCfg slotCfg wallet _ =
+handleServicesSimulator slotCfg wallet _ =
     let makeTimedChainIndexEvent wllt =
             interpret (mapLog @_ @(PABMultiAgentMsg t) EmulatorMsg)
             . reinterpret (Core.timed @EmulatorEvent')
@@ -298,7 +295,7 @@ handleServicesSimulator feeCfg slotCfg wallet _ =
         . flip (handleError @WAPI.WalletAPIError) (throwError @PABError . WalletError)
         . interpret (Core.handleUserEnvReader @t @(SimulatorState t))
         . reinterpret (runWalletState @t wallet)
-        . reinterpretN @'[State Wallet.WalletState, Error WAPI.WalletAPIError, LogMsg TxBalanceMsg] (Wallet.handleWallet feeCfg)
+        . reinterpretN @'[State Wallet.WalletState, Error WAPI.WalletAPIError, LogMsg TxBalanceMsg] Wallet.handleWallet
 
 initialStateFromWallet :: Wallet -> AgentState t
 initialStateFromWallet = maybe (error "runWalletState") (initialAgentState . Wallet._mockWallet) . Wallet.emptyWalletState
@@ -542,10 +539,10 @@ handleNodeClient slotCfg wallet = \case
             mp <- STM.readTVar _agentStates
             case Map.lookup wallet mp of
                 Nothing -> do
-                    let newState = initialStateFromWallet wallet & submittedFees . at (txId tx) ?~ txFee tx
+                    let newState = initialStateFromWallet wallet & submittedFees . at (getCardanoTxId tx) ?~ getCardanoTxFee tx
                     STM.writeTVar _agentStates (Map.insert wallet newState mp)
                 Just s' -> do
-                    let newState = s' & submittedFees . at (txId tx) ?~ txFee tx
+                    let newState = s' & submittedFees . at (getCardanoTxId tx) ?~ getCardanoTxFee tx
                     STM.writeTVar _agentStates (Map.insert wallet newState mp)
     GetClientSlot -> Chain.getCurrentSlot
     GetClientSlotConfig -> pure slotCfg
@@ -582,6 +579,7 @@ handleChainIndexEffect = runChainIndexEffects @t . \case
     UnspentTxOutFromRef ref   -> ChainIndex.unspentTxOutFromRef ref
     UtxoSetMembership ref     -> ChainIndex.utxoSetMembership ref
     UtxoSetAtAddress pq addr  -> ChainIndex.utxoSetAtAddress pq addr
+    DatumsAtAddress addr      -> ChainIndex.datumsAtAddress addr
     UtxoSetWithCurrency pq ac -> ChainIndex.utxoSetWithCurrency pq ac
     TxoSetAtAddress pq addr   -> ChainIndex.txoSetAtAddress pq addr
     GetTip                    -> ChainIndex.getTip

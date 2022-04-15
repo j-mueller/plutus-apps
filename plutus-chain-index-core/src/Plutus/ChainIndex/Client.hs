@@ -27,6 +27,7 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Data.Proxy (Proxy (..))
 import Ledger (Datum, DatumHash, MintingPolicy, MintingPolicyHash, Redeemer, RedeemerHash, StakeValidator,
                StakeValidatorHash, Validator, ValidatorHash)
+import Ledger.Credential (Credential)
 import Ledger.Tx (ChainIndexTxOut, TxOutRef)
 import Network.HTTP.Types.Status (Status (..))
 import Plutus.ChainIndex.Api (API, IsUtxoResponse, TxoAtAddressRequest (TxoAtAddressRequest), TxosResponse,
@@ -51,17 +52,19 @@ getRedeemer :: RedeemerHash -> ClientM Redeemer
 getUnspentTxOut :: TxOutRef -> ClientM ChainIndexTxOut
 getIsUtxo :: TxOutRef -> ClientM IsUtxoResponse
 getUtxoSetAtAddress :: UtxoAtAddressRequest -> ClientM UtxosResponse
+getDatumsAtAddress :: Credential -> ClientM [Datum]
 getUtxoSetWithCurrency :: UtxoWithCurrencyRequest -> ClientM UtxosResponse
 getTxoSetAtAddress :: TxoAtAddressRequest -> ClientM TxosResponse
 getTip :: ClientM Tip
 
-(healthCheck, (getDatum, getValidator, getMintingPolicy, getStakeValidator, getRedeemer), getUnspentTxOut, getIsUtxo, getUtxoSetAtAddress, getUtxoSetWithCurrency, getTxoSetAtAddress, getTip, collectGarbage) =
-    (healthCheck_, (getDatum_, getValidator_, getMintingPolicy_, getStakeValidator_, getRedeemer_), getUnspentTxOut_, getIsUtxo_, getUtxoSetAtAddress_, getUtxoSetWithCurrency_, getTxoSetAtAddress_, getTip_, collectGarbage_) where
+(healthCheck, (getDatum, getValidator, getMintingPolicy, getStakeValidator, getRedeemer), getUnspentTxOut, getIsUtxo, getUtxoSetAtAddress, getDatumsAtAddress, getUtxoSetWithCurrency, getTxoSetAtAddress, getTip, collectGarbage) =
+    (healthCheck_, (getDatum_, getValidator_, getMintingPolicy_, getStakeValidator_, getRedeemer_), getUnspentTxOut_, getIsUtxo_, getUtxoSetAtAddress_, getDatumsAtAddress_, getUtxoSetWithCurrency_, getTxoSetAtAddress_, getTip_, collectGarbage_) where
         healthCheck_
             :<|> (getDatum_ :<|> getValidator_ :<|> getMintingPolicy_ :<|> getStakeValidator_ :<|> getRedeemer_)
             :<|> getUnspentTxOut_
             :<|> getIsUtxo_
             :<|> getUtxoSetAtAddress_
+            :<|> getDatumsAtAddress_
             :<|> getUtxoSetWithCurrency_
             :<|> getTxoSetAtAddress_
             :<|> getTip_
@@ -102,6 +105,7 @@ handleChainIndexClient event = do
         UnspentTxOutFromRef r    -> runClientMaybe (getUnspentTxOut r)
         UtxoSetMembership r      -> runClient (getIsUtxo r)
         UtxoSetAtAddress pq a    -> runClient (getUtxoSetAtAddress $ UtxoAtAddressRequest (Just pq) a)
+        DatumsAtAddress c        -> runClient (getDatumsAtAddress c)
         UtxoSetWithCurrency pq a -> runClient (getUtxoSetWithCurrency $ UtxoWithCurrencyRequest (Just pq) a)
         TxoSetAtAddress pq a     -> runClient (getTxoSetAtAddress $ TxoAtAddressRequest (Just pq) a)
         GetTip                   -> runClient getTip
