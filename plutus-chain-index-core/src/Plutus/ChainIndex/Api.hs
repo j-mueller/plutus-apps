@@ -17,6 +17,8 @@ module Plutus.ChainIndex.Api
   , swagger
   , TxoAtAddressRequest(..)
   , TxosResponse(..)
+  , QueryAtAddressRequest (..)
+  , QueryResponse(..)
   ) where
 
 import Control.Monad.Freer.Extras.Pagination (Page, PageQuery)
@@ -142,13 +144,34 @@ data TxosResponse = TxosResponse
     }
     deriving (Show, Eq, Generic, FromJSON, ToJSON, OpenApi.ToSchema)
 
+
+data QueryAtAddressRequest = QueryAtAddressRequest
+    { pageQuery  :: Maybe (PageQuery TxOutRef)
+    , credential :: Credential
+    }
+    deriving (Show, Eq, Generic, FromJSON, ToJSON, OpenApi.ToSchema)
+
+-- | generic response type endpoint
+-- This type is introduced to avoid querying the chain index twice to obtain the expected info.
+-- Indeed, it returns the next page query if more items are available
+data QueryResponse a = QueryResponse
+    { queryResult :: a
+    , nextQuery   :: Maybe (PageQuery TxOutRef)
+    }
+    deriving (Show, Generic, Eq)
+
+deriving instance (FromJSON a, Generic a) => FromJSON (QueryResponse a)
+deriving instance (ToJSON a, Generic a) => ToJSON (QueryResponse a)
+deriving instance (OpenApi.ToSchema a, Generic a) => OpenApi.ToSchema (QueryResponse a)
+
 type API
     = "healthcheck" :> Description "Is the server alive?" :> Get '[JSON] NoContent
     :<|> "from-hash" :> FromHashAPI
     :<|> "unspent-tx-out" :> Description "Get an unspent transaction output from its reference." :> ReqBody '[JSON] TxOutRef :> Post '[JSON] ChainIndexTxOut
     :<|> "is-utxo" :> Description "Check if the reference is an UTxO." :> ReqBody '[JSON] TxOutRef :> Post '[JSON] IsUtxoResponse
     :<|> "utxo-at-address" :> Description "Get all UTxOs at an address." :> ReqBody '[JSON] UtxoAtAddressRequest :> Post '[JSON] UtxosResponse
-    :<|> "datums-at-address" :> Description "Get all Datums at an address." :> ReqBody '[JSON] Credential :> Post '[JSON] [Datum]
+    :<|> "datums-at-address" :> Description "Get all Datums at an address." :> ReqBody '[JSON] QueryAtAddressRequest :> Post '[JSON] (QueryResponse [Datum])
+    :<|> "unspent-txouts-at-address" :> Description "Get all unspent transaction output at an address." :> ReqBody '[JSON] QueryAtAddressRequest :> Post '[JSON] (QueryResponse [(TxOutRef, ChainIndexTxOut)])
     :<|> "utxo-with-currency" :> Description "Get all UTxOs with a currency." :> ReqBody '[JSON] UtxoWithCurrencyRequest :> Post '[JSON] UtxosResponse
     :<|> "txo-at-address" :> Description "Get TxOs at an address." :> ReqBody '[JSON] TxoAtAddressRequest :> Post '[JSON] TxosResponse
     :<|> "tip" :> Description "Get the current synced tip." :> Get '[JSON] Tip

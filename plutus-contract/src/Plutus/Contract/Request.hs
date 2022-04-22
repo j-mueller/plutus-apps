@@ -102,7 +102,7 @@ import Data.Default (Default (def))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (AllUniqueLabels, HasType, KnownSymbol, type (.==))
 import Data.Text qualified as Text
@@ -132,8 +132,8 @@ import Plutus.Contract.Schema (Input, Output)
 import Wallet.Types (ContractInstanceId, EndpointDescription (EndpointDescription),
                      EndpointValue (EndpointValue, unEndpointValue))
 
-import Plutus.ChainIndex (ChainIndexTx, Page (nextPageQuery, pageItems), PageQuery, txOutRefs)
-import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse, UtxosResponse (page))
+import Plutus.ChainIndex (ChainIndexTx, PageQuery, txOutRefs)
+import Plutus.ChainIndex.Api (IsUtxoResponse, QueryResponse (nextQuery, queryResult), TxosResponse, UtxosResponse)
 import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip, TxOutStatus, TxStatus)
 import Plutus.Contract.Error (AsContractError (_ChainIndexContractError, _ConstraintResolutionContractError, _EndpointDecodeContractError, _ResumableContractError, _WalletContractError))
 import Plutus.Contract.Resumable (prompt)
@@ -266,6 +266,41 @@ datumFromHash h = do
     r                     -> throwError $ review _ChainIndexContractError ("DatumHashResponse", r)
 
 
+
+-- | Get all the datums at an address w.r.t. a page query TxOutRef
+queryDatumsAt ::
+    forall w s e.
+    ( AsContractError e
+    )
+    => PageQuery TxOutRef
+    -> Address
+    -> Contract w s e (QueryResponse [Datum])
+queryDatumsAt pq addr = do
+  cir <- pabReq (ChainIndexQueryReq $ E.DatumsAtAddress pq $ addressCredential addr) E._ChainIndexQueryResp
+  case cir of
+    E.DatumsAtResponse r -> pure r
+    r                    -> throwError $ review _ChainIndexContractError ("DatumsAtResponse", r)
+
+
+
+-- | Fold through each 'Page's of 'QueryResponse' at a given 'Address', and
+-- accumulate the result.
+foldQueryResponseAt ::
+    forall w s e a.
+    (PageQuery TxOutRef -> Address -> Contract w s e (QueryResponse a)) -- ^ query response function
+    -> (a -> a -> Contract w s e a) -- ^ Accumulator function
+    -> a -- ^ Initial value
+    -> Address -- ^ Address which contain the UTXOs
+    -> Contract w s e a
+foldQueryResponseAt q f ini addr = go ini (Just def)
+  where
+    go acc Nothing = pure acc
+    go acc (Just pq) = do
+      res <- q pq addr
+      newAcc <- f acc $ queryResult res
+      go newAcc (nextQuery res)
+
+
 -- | Get the all datums at an address whether or not the corresponding utxo have been consumed or not.
 datumsAt ::
     forall w s e.
@@ -274,11 +309,10 @@ datumsAt ::
     => Address
     -> Contract w s e [Datum]
 datumsAt addr = do
-  cir <- pabReq (ChainIndexQueryReq $ E.DatumsAtAddress $ addressCredential addr) E._ChainIndexQueryResp
-  case cir of
-    E.DatumsAtResponse r -> pure r
-    r                    -> throwError $ review _ChainIndexContractError ("DatumsAtResponse", r)
-
+  foldQueryResponseAt queryDatumsAt f [] addr
+  where
+    f acc res = do
+      pure $ acc <> res
 
 validatorFromHash ::
     forall w s e.
@@ -380,23 +414,21 @@ utxoRefsWithCurrency pq assetClass = do
     E.UtxoSetWithCurrencyResponse r -> pure r
     r                               -> throwError $ review _ChainIndexContractError ("UtxoSetWithCurrencyResponse", r)
 
--- | Fold through each 'Page's of unspent 'TxOutRef's at a given 'Address', and
--- accumulate the result.
-foldUtxoRefsAt ::
-    forall w s e a.
+
+-- | Get all the unspent transaction output at an address w.r.t. a page query TxOutRef
+queryUnspentTxOutsAt ::
+    forall w s e.
     ( AsContractError e
     )
-    => (a -> Page TxOutRef -> Contract w s e a) -- ^ Accumulator function
-    -> a -- ^ Initial value
-    -> Address -- ^ Address which contain the UTXOs
-    -> Contract w s e a
-foldUtxoRefsAt f ini addr = go ini (Just def)
-  where
-    go acc Nothing = pure acc
-    go acc (Just pq) = do
-      page <- page <$> utxoRefsAt pq addr
-      newAcc <- f acc page
-      go newAcc (nextPageQuery page)
+    => PageQuery TxOutRef
+    -> Address
+    -> Contract w s e (QueryResponse [(TxOutRef, ChainIndexTxOut)])
+queryUnspentTxOutsAt pq addr = do
+  cir <- pabReq (ChainIndexQueryReq $ E.UnspentTxOutSetAtAddress pq $ addressCredential addr) E._ChainIndexQueryResp
+  case cir of
+    E.UnspentTxOutsAtResponse r -> pure r
+    r                           -> throwError $ review _ChainIndexContractError ("UnspentTxOutAtResponse", r)
+
 
 -- | Get the unspent transaction outputs at an address.
 utxosAt ::
@@ -406,15 +438,13 @@ utxosAt ::
     => Address
     -> Contract w s e (Map TxOutRef ChainIndexTxOut)
 utxosAt addr = do
-  foldUtxoRefsAt f Map.empty addr
+  txouts <- foldQueryResponseAt queryUnspentTxOutsAt f [] addr
+  pure $ Map.fromList txouts
   where
-    f acc page = do
-      let utxoRefs = pageItems page
-      txOuts <- traverse unspentTxOutFromRef utxoRefs
-      let utxos = Map.fromList
-                $ mapMaybe (\(ref, txOut) -> fmap (ref,) txOut)
-                $ zip utxoRefs txOuts
-      pure $ acc <> utxos
+    f acc res = do
+      pure $ acc <> res
+
+
 
 -- | Get the unspent transaction outputs from a 'ChainIndexTx'.
 utxosTxOutTxFromTx ::

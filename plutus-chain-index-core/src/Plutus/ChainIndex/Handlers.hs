@@ -26,13 +26,14 @@ import Control.Monad.Freer (Eff, Member, type (~>))
 import Control.Monad.Freer.Error (Error, throwError)
 import Control.Monad.Freer.Extras.Beam (BeamEffect (..), BeamableSqlite, combined, selectList, selectOne, selectPage)
 import Control.Monad.Freer.Extras.Log (LogMsg, logDebug, logError, logWarn)
-import Control.Monad.Freer.Extras.Pagination (Page (Page), PageQuery (..))
+import Control.Monad.Freer.Extras.Pagination (Page (Page, nextPageQuery, pageItems), PageQuery (..))
 import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.Freer.State (State, get, gets, put)
 import Data.ByteString (ByteString)
 import Data.FingerTree qualified as FT
+import Data.List qualified as List
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe, maybeToList)
 import Data.Proxy (Proxy (..))
 import Data.Set qualified as Set
 import Data.Word (Word64)
@@ -45,8 +46,8 @@ import Database.Beam.Schema.Tables (zipTables)
 import Database.Beam.Sqlite (Sqlite)
 import Ledger (Address (..), ChainIndexTxOut (..), Datum, DatumHash (..), TxOut (..), TxOutRef (..))
 import Ledger.Value (AssetClass (AssetClass), flattenValue)
-import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), TxosResponse (TxosResponse),
-                              UtxosResponse (UtxosResponse))
+import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse),
+                              TxosResponse (TxosResponse), UtxosResponse (UtxosResponse))
 import Plutus.ChainIndex.ChainIndexError (ChainIndexError (..))
 import Plutus.ChainIndex.ChainIndexLog (ChainIndexLog (..))
 import Plutus.ChainIndex.Compatibility (toCardanoPoint)
@@ -88,7 +89,8 @@ handleQuery = \case
             TipAtGenesis -> throwError QueryFailedNoTip
             tp           -> pure (IsUtxoResponse tp (TxUtxoBalance.isUnspentOutput r utxoState))
     UtxoSetAtAddress pageQuery cred -> getUtxoSetAtAddress pageQuery cred
-    DatumsAtAddress cred -> getDatumsAtAddress cred
+    DatumsAtAddress pageQuery cred -> getDatumsAtAddress pageQuery cred
+    UnspentTxOutSetAtAddress pageQuery cred -> getTxOutSetAtAddress pageQuery cred
     UtxoSetWithCurrency pageQuery assetClass ->
       getUtxoSetWithCurrency pageQuery assetClass
     TxoSetAtAddress pageQuery cred -> getTxoSetAtAddress pageQuery cred
@@ -206,19 +208,62 @@ getUtxoSetAtAddress pageQuery (toDbValue -> cred) = do
           pure (UtxosResponse tp page)
 
 
-getDatumsAtAddress :: Member BeamEffect effs => Credential -> Eff effs [Datum]
-getDatumsAtAddress (toDbValue -> cred) = do
-  let query =
-        select
-        $ filter_ (\row -> _addressRowCred row ==. val_ cred )
-        $ all_ (addressRows db)
-  row_l <- queryList query
-  catMaybes <$> mapM f_map row_l
+getDatumsAtAddress ::
+  forall effs.
+    ( Member (State ChainIndexState) effs
+    , Member BeamEffect effs
+    , Member (LogMsg ChainIndexLog) effs
+    )
+  => PageQuery TxOutRef
+  -> Credential
+  -> Eff effs (QueryResponse [Datum])
+getDatumsAtAddress pageQuery (toDbValue -> cred) = do
+  utxoState <- gets @ChainIndexState UtxoState.utxoState
+  case UtxoState.tip utxoState of
+    TipAtGenesis -> do
+      logWarn TipIsGenesis
+      pure (QueryResponse [] Nothing)
+
+    _             -> do
+      let queryPage =
+            fmap _addressRowOutRef
+            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ all_ (addressRows db)
+          queryAll =
+            select
+            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ all_ (addressRows db)
+      pRefs <- selectPage (fmap toDbValue pageQuery) queryPage
+      let page = fmap fromDbValue pRefs
+      row_l <- List.filter (\(_, t, _) -> List.elem t (pageItems page)) <$> queryList queryAll
+      datums <- catMaybes <$> mapM f_map row_l
+      pure $ QueryResponse datums (nextPageQuery page)
 
   where
-    f_map :: Member BeamEffect effs => (Credential, TxOutRef, Maybe DatumHash) -> Eff effs (Maybe Datum)
+    f_map :: (Credential, TxOutRef, Maybe DatumHash) -> Eff effs (Maybe Datum)
     f_map (_, _, Nothing) = pure Nothing
     f_map (_, _, Just dh) = getDatumFromHash dh
+
+
+getTxOutSetAtAddress ::
+  forall effs.
+  ( Member (State ChainIndexState) effs
+  , Member BeamEffect effs
+  , Member (LogMsg ChainIndexLog) effs
+  )
+  => PageQuery TxOutRef
+  -> Credential
+  -> Eff effs (QueryResponse [(TxOutRef, ChainIndexTxOut)])
+getTxOutSetAtAddress pageQuery cred = do
+  (UtxosResponse tip page) <- getUtxoSetAtAddress pageQuery cred
+  case tip of
+    TipAtGenesis -> do
+      pure (QueryResponse [] Nothing)
+    _             -> do
+      mtxouts <- mapM getUtxoutFromRef (pageItems page)
+      let txouts = [ (t, o) | (t, mo) <- List.zip (pageItems page) mtxouts, o <- maybeToList mo]
+      pure $ QueryResponse txouts (nextPageQuery page)
+
 
 getUtxoSetWithCurrency
   :: forall effs.
