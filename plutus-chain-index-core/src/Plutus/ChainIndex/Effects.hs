@@ -15,6 +15,7 @@ module Plutus.ChainIndex.Effects(
     , utxoSetMembership
     , utxoSetAtAddress
     , datumsAtAddress
+    , unspentTxOutSetAtAddress
     , utxoSetWithCurrency
     , txoSetAtAddress
     , getTip
@@ -33,7 +34,7 @@ import Ledger (AssetClass, Datum, DatumHash, MintingPolicy, MintingPolicyHash, R
                StakeValidatorHash, Validator, ValidatorHash)
 import Ledger.Credential (Credential)
 import Ledger.Tx (ChainIndexTxOut, TxOutRef)
-import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse, UtxosResponse)
+import Plutus.ChainIndex.Api (IsUtxoResponse, QueryResponse, TxosResponse, UtxosResponse)
 import Plutus.ChainIndex.Types (ChainSyncBlock, Diagnostics, Point, Tip)
 
 data ChainIndexQueryEffect r where
@@ -62,8 +63,12 @@ data ChainIndexQueryEffect r where
     -- | Unspent outputs located at addresses with the given credential.
     UtxoSetAtAddress :: PageQuery TxOutRef -> Credential -> ChainIndexQueryEffect UtxosResponse
 
-    -- | get the datums located at addresses with the given credential.
-    DatumsAtAddress :: Credential -> ChainIndexQueryEffect [Datum]
+    -- | Get the datums located at addresses with the given credential.
+    DatumsAtAddress :: PageQuery TxOutRef -> Credential -> ChainIndexQueryEffect (QueryResponse [Datum])
+
+    -- | Get the unspent txouts located at an address
+    -- This is to avoid multiple queries from chain-index when using utxosAt
+    UnspentTxOutSetAtAddress :: PageQuery TxOutRef -> Credential -> ChainIndexQueryEffect (QueryResponse [(TxOutRef, ChainIndexTxOut)])
 
     -- | Unspent outputs containing a specific currency ('AssetClass').
     --

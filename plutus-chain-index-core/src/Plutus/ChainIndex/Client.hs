@@ -27,10 +27,10 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Data.Proxy (Proxy (..))
 import Ledger (Datum, DatumHash, MintingPolicy, MintingPolicyHash, Redeemer, RedeemerHash, StakeValidator,
                StakeValidatorHash, Validator, ValidatorHash)
-import Ledger.Credential (Credential)
 import Ledger.Tx (ChainIndexTxOut, TxOutRef)
 import Network.HTTP.Types.Status (Status (..))
-import Plutus.ChainIndex.Api (API, IsUtxoResponse, TxoAtAddressRequest (TxoAtAddressRequest), TxosResponse,
+import Plutus.ChainIndex.Api (API, IsUtxoResponse, QueryAtAddressRequest (QueryAtAddressRequest), QueryResponse,
+                              TxoAtAddressRequest (TxoAtAddressRequest), TxosResponse,
                               UtxoAtAddressRequest (UtxoAtAddressRequest),
                               UtxoWithCurrencyRequest (UtxoWithCurrencyRequest), UtxosResponse)
 import Plutus.ChainIndex.Effects (ChainIndexQueryEffect (..))
@@ -52,19 +52,21 @@ getRedeemer :: RedeemerHash -> ClientM Redeemer
 getUnspentTxOut :: TxOutRef -> ClientM ChainIndexTxOut
 getIsUtxo :: TxOutRef -> ClientM IsUtxoResponse
 getUtxoSetAtAddress :: UtxoAtAddressRequest -> ClientM UtxosResponse
-getDatumsAtAddress :: Credential -> ClientM [Datum]
+getDatumsAtAddress :: QueryAtAddressRequest -> ClientM (QueryResponse [Datum])
+getUnspentTxOutsAtAddress :: QueryAtAddressRequest -> ClientM (QueryResponse [(TxOutRef, ChainIndexTxOut)])
 getUtxoSetWithCurrency :: UtxoWithCurrencyRequest -> ClientM UtxosResponse
 getTxoSetAtAddress :: TxoAtAddressRequest -> ClientM TxosResponse
 getTip :: ClientM Tip
 
-(healthCheck, (getDatum, getValidator, getMintingPolicy, getStakeValidator, getRedeemer), getUnspentTxOut, getIsUtxo, getUtxoSetAtAddress, getDatumsAtAddress, getUtxoSetWithCurrency, getTxoSetAtAddress, getTip, collectGarbage) =
-    (healthCheck_, (getDatum_, getValidator_, getMintingPolicy_, getStakeValidator_, getRedeemer_), getUnspentTxOut_, getIsUtxo_, getUtxoSetAtAddress_, getDatumsAtAddress_, getUtxoSetWithCurrency_, getTxoSetAtAddress_, getTip_, collectGarbage_) where
+(healthCheck, (getDatum, getValidator, getMintingPolicy, getStakeValidator, getRedeemer), getUnspentTxOut, getIsUtxo, getUtxoSetAtAddress, getDatumsAtAddress, getUnspentTxOutsAtAddress, getUtxoSetWithCurrency, getTxoSetAtAddress, getTip, collectGarbage) =
+    (healthCheck_, (getDatum_, getValidator_, getMintingPolicy_, getStakeValidator_, getRedeemer_), getUnspentTxOut_, getIsUtxo_, getUtxoSetAtAddress_, getDatumsAtAddress_, getUnspentTxOutsAtAddress_, getUtxoSetWithCurrency_, getTxoSetAtAddress_, getTip_, collectGarbage_) where
         healthCheck_
             :<|> (getDatum_ :<|> getValidator_ :<|> getMintingPolicy_ :<|> getStakeValidator_ :<|> getRedeemer_)
             :<|> getUnspentTxOut_
             :<|> getIsUtxo_
             :<|> getUtxoSetAtAddress_
             :<|> getDatumsAtAddress_
+            :<|> getUnspentTxOutsAtAddress_
             :<|> getUtxoSetWithCurrency_
             :<|> getTxoSetAtAddress_
             :<|> getTip_
@@ -97,15 +99,16 @@ handleChainIndexClient event = do
                 Left (FailureResponse _ Response{responseStatusCode=Status{statusCode=404}}) -> pure Nothing
                 Left e                                                                       -> throwError e
     case event of
-        DatumFromHash d          -> runClientMaybe (getDatum d)
-        ValidatorFromHash d      -> runClientMaybe (getValidator d)
-        MintingPolicyFromHash d  -> runClientMaybe (getMintingPolicy d)
-        StakeValidatorFromHash d -> runClientMaybe (getStakeValidator d)
-        RedeemerFromHash d       -> runClientMaybe (getRedeemer d)
-        UnspentTxOutFromRef r    -> runClientMaybe (getUnspentTxOut r)
-        UtxoSetMembership r      -> runClient (getIsUtxo r)
-        UtxoSetAtAddress pq a    -> runClient (getUtxoSetAtAddress $ UtxoAtAddressRequest (Just pq) a)
-        DatumsAtAddress c        -> runClient (getDatumsAtAddress c)
-        UtxoSetWithCurrency pq a -> runClient (getUtxoSetWithCurrency $ UtxoWithCurrencyRequest (Just pq) a)
-        TxoSetAtAddress pq a     -> runClient (getTxoSetAtAddress $ TxoAtAddressRequest (Just pq) a)
-        GetTip                   -> runClient getTip
+        DatumFromHash d               -> runClientMaybe (getDatum d)
+        ValidatorFromHash d           -> runClientMaybe (getValidator d)
+        MintingPolicyFromHash d       -> runClientMaybe (getMintingPolicy d)
+        StakeValidatorFromHash d      -> runClientMaybe (getStakeValidator d)
+        RedeemerFromHash d            -> runClientMaybe (getRedeemer d)
+        UnspentTxOutFromRef r         -> runClientMaybe (getUnspentTxOut r)
+        UtxoSetMembership r           -> runClient (getIsUtxo r)
+        UtxoSetAtAddress pq a         -> runClient (getUtxoSetAtAddress $ UtxoAtAddressRequest (Just pq) a)
+        DatumsAtAddress pq a          -> runClient (getDatumsAtAddress $ QueryAtAddressRequest (Just pq) a)
+        UnspentTxOutSetAtAddress pq a -> runClient (getUnspentTxOutsAtAddress $ QueryAtAddressRequest (Just pq) a)
+        UtxoSetWithCurrency pq a      -> runClient (getUtxoSetWithCurrency $ UtxoWithCurrencyRequest (Just pq) a)
+        TxoSetAtAddress pq a          -> runClient (getTxoSetAtAddress $ TxoAtAddressRequest (Just pq) a)
+        GetTip                        -> runClient getTip
