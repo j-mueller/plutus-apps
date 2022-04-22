@@ -571,18 +571,19 @@ handleChainIndexEffect ::
     => ChainIndexQueryEffect
     ~> Eff effs
 handleChainIndexEffect = runChainIndexEffects @t . \case
-    DatumFromHash h           -> ChainIndex.datumFromHash h
-    ValidatorFromHash h       -> ChainIndex.validatorFromHash h
-    MintingPolicyFromHash h   -> ChainIndex.mintingPolicyFromHash h
-    StakeValidatorFromHash h  -> ChainIndex.stakeValidatorFromHash h
-    RedeemerFromHash h        -> ChainIndex.redeemerFromHash h
-    UnspentTxOutFromRef ref   -> ChainIndex.unspentTxOutFromRef ref
-    UtxoSetMembership ref     -> ChainIndex.utxoSetMembership ref
-    UtxoSetAtAddress pq addr  -> ChainIndex.utxoSetAtAddress pq addr
-    DatumsAtAddress addr      -> ChainIndex.datumsAtAddress addr
-    UtxoSetWithCurrency pq ac -> ChainIndex.utxoSetWithCurrency pq ac
-    TxoSetAtAddress pq addr   -> ChainIndex.txoSetAtAddress pq addr
-    GetTip                    -> ChainIndex.getTip
+    DatumFromHash h                  -> ChainIndex.datumFromHash h
+    ValidatorFromHash h              -> ChainIndex.validatorFromHash h
+    MintingPolicyFromHash h          -> ChainIndex.mintingPolicyFromHash h
+    StakeValidatorFromHash h         -> ChainIndex.stakeValidatorFromHash h
+    RedeemerFromHash h               -> ChainIndex.redeemerFromHash h
+    UnspentTxOutFromRef ref          -> ChainIndex.unspentTxOutFromRef ref
+    UtxoSetMembership ref            -> ChainIndex.utxoSetMembership ref
+    UtxoSetAtAddress pq addr         -> ChainIndex.utxoSetAtAddress pq addr
+    DatumsAtAddress pq addr          -> ChainIndex.datumsAtAddress pq addr
+    UnspentTxOutSetAtAddress pq addr -> ChainIndex.unspentTxOutSetAtAddress pq addr
+    UtxoSetWithCurrency pq ac        -> ChainIndex.utxoSetWithCurrency pq ac
+    TxoSetAtAddress pq addr          -> ChainIndex.txoSetAtAddress pq addr
+    GetTip                           -> ChainIndex.getTip
 
 -- | Start a thread that prints log messages to the terminal when they come in.
 printLogMessages ::
