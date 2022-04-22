@@ -86,7 +86,7 @@ module Plutus.PAB.Core
     , timed
     ) where
 
-import Control.Applicative (Alternative ((<|>)), empty)
+import Control.Applicative (Alternative ((<|>)))
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
 import Control.Lens (view)
@@ -526,11 +526,11 @@ waitForInstanceState extract instanceId = do
   liftIO $ STM.atomically $ do
     ms <- extract is
     case ms of
-     Nothing     -> empty
+     Nothing     -> STM.retry
      Just status -> pure status
 
 
--- | Wait until the instance state is updated with a response form an invoked endpoint.
+-- | Wait until the instance state is updated with a response from an invoked endpoint.
 -- Note that the waiting is performed only when a contract is expected to end with a Done status, i.e.,
 -- no open endpoints available after invocation.
 waitForInstanceStateWithResult :: forall t env. ContractInstanceId -> PABAction t env ContractActivityStatus
