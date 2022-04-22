@@ -238,6 +238,7 @@ chainIndexMatches q r = case (q, r) of
     (UtxoSetAtAddress{}, UtxoSetAtResponse{})                -> True
     (UnspentTxOutSetAtAddress{}, UnspentTxOutsAtResponse{})  -> True
     (DatumsAtAddress{}, DatumsAtResponse{})                  -> True
+    (UnspentTxOutSetAtAddress{}, UnspentTxOutsAtResponse{})  -> True
     (UtxoSetWithCurrency{}, UtxoSetWithCurrencyResponse{})   -> True
     (TxoSetAtAddress{}, TxoSetAtResponse{})                  -> True
     (TxsFromTxIds{}, TxIdsResponse{})                        -> True
@@ -258,8 +259,8 @@ data ChainIndexQuery =
   | TxFromTxId TxId
   | UtxoSetMembership TxOutRef
   | UtxoSetAtAddress (PageQuery TxOutRef) Credential
+  | DatumsAtAddress (PageQuery TxOutRef) Credential
   | UnspentTxOutSetAtAddress (PageQuery TxOutRef) Credential
-  | DatumsAtAddress Credential
   | UtxoSetWithCurrency (PageQuery TxOutRef) AssetClass
   | TxsFromTxIds [TxId]
   | TxoSetAtAddress (PageQuery TxOutRef) Credential
@@ -280,7 +281,7 @@ instance Pretty ChainIndexQuery where
         UtxoSetMembership txOutRef   -> "whether tx output is part of the utxo set" <+> pretty txOutRef
         UtxoSetAtAddress _ c         -> "requesting utxos located at addresses with the credential" <+> pretty c
         UnspentTxOutSetAtAddress _ c -> "requesting unspent utxos located at addresses with the credential" <+> pretty c
-        DatumsAtAddress c            -> "requesting datums located at addresses with the credential" <+> pretty c
+        DatumsAtAddress _ c          -> "requesting datums located at addresses with the credential" <+> pretty c
         UtxoSetWithCurrency _ ac     -> "requesting utxos containing the asset class" <+> pretty ac
         TxsFromTxIds i               -> "requesting chain index txs from ids" <+> pretty i
         TxoSetAtAddress _ c          -> "requesting txos located at addresses with the credential" <+> pretty c
@@ -300,8 +301,8 @@ data ChainIndexResponse =
   | TxIdResponse (Maybe ChainIndexTx)
   | UtxoSetMembershipResponse IsUtxoResponse
   | UtxoSetAtResponse UtxosResponse
+  | DatumsAtResponse (QueryResponse [Datum])
   | UnspentTxOutsAtResponse (QueryResponse [(TxOutRef, ChainIndexTxOut)])
-  | DatumsAtResponse [Datum]
   | UtxoSetWithCurrencyResponse UtxosResponse
   | TxIdsResponse [ChainIndexTx]
   | TxoSetAtResponse TxosResponse
@@ -330,9 +331,10 @@ instance Pretty ChainIndexResponse where
             <+> pretty tip
             <+> "and utxo refs are"
             <+> hsep (fmap pretty $ pageItems txOutRefPage)
+        DatumsAtResponse (QueryResponse datums _)  ->
+          "Chain index datums from address response:" <+> hsep (fmap pretty datums)
         UnspentTxOutsAtResponse (QueryResponse txouts _) ->
           "Chain index datums from address response:" <+> hsep (fmap pretty txouts)
-        DatumsAtResponse d -> "Chain index datums from address response:" <+> pretty d
         UtxoSetWithCurrencyResponse (UtxosResponse tip txOutRefPage) ->
                 "Chain index UTxO with asset class response:"
             <+> "Current tip is"

@@ -32,7 +32,6 @@ import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Proxy (Proxy (..))
 import Ledger (TxId)
-import Ledger.Credential (Credential)
 import Ledger.Tx (ChainIndexTxOut, TxOutRef)
 import Network.HTTP.Types.Status (Status (..))
 import Plutus.ChainIndex.Api (API, IsUtxoResponse, QueryAtAddressRequest (QueryAtAddressRequest), QueryResponse,
@@ -64,7 +63,7 @@ getUnspentTxOut :: TxOutRef -> ClientM ChainIndexTxOut
 getIsUtxo :: TxOutRef -> ClientM IsUtxoResponse
 getUtxoSetAtAddress :: UtxoAtAddressRequest -> ClientM UtxosResponse
 getUnspentTxOutsAtAddress :: QueryAtAddressRequest -> ClientM (QueryResponse [(TxOutRef, ChainIndexTxOut)])
-getDatumsAtAddress :: Credential -> ClientM [Datum]
+getDatumsAtAddress :: QueryAtAddressRequest -> ClientM (QueryResponse [Datum])
 getUtxoSetWithCurrency :: UtxoWithCurrencyRequest -> ClientM UtxosResponse
 getTxs :: [TxId] -> ClientM [ChainIndexTx]
 getTxoSetAtAddress :: TxoAtAddressRequest -> ClientM TxosResponse
@@ -125,7 +124,7 @@ handleChainIndexClient event = do
         UtxoSetMembership r           -> runClient (getIsUtxo r)
         UtxoSetAtAddress pq a         -> runClient (getUtxoSetAtAddress $ UtxoAtAddressRequest (Just pq) a)
         UnspentTxOutSetAtAddress pq a -> runClient (getUnspentTxOutsAtAddress $ QueryAtAddressRequest (Just pq) a)
-        DatumsAtAddress c             -> runClient (getDatumsAtAddress c)
+        DatumsAtAddress pq a          -> runClient (getDatumsAtAddress $ QueryAtAddressRequest (Just pq) a)
         UtxoSetWithCurrency pq a      -> runClient (getUtxoSetWithCurrency $ UtxoWithCurrencyRequest (Just pq) a)
         TxsFromTxIds t                -> runClient (getTxs t)
         TxoSetAtAddress pq a          -> runClient (getTxoSetAtAddress $ TxoAtAddressRequest (Just pq) a)

@@ -220,13 +220,21 @@ handleQuery = \case
             mtxouts <- mapM getUtxoutFromRef (pageItems page)
             let txouts = [ (t, o) | (t, mo) <- List.zip (pageItems page) mtxouts, o <- maybeToList mo]
             pure $ QueryResponse txouts (nextPageQuery page)
-    DatumsAtAddress cred -> do
+    DatumsAtAddress pageQuery cred -> do
       state <- get
-      let outRefs = Set.toList $ fromMaybe mempty $ view (diskState . addressMap . at cred) state
+      let outRefs = view (diskState . addressMap . at cred) state
+          txoRefs = fromMaybe mempty outRefs
+          utxo = view (utxoIndex . to utxoState) state
+          page = pageOf pageQuery txoRefs
           getHash h = gets (view $ diskState . dataMap . at h)
-      txouts <- catMaybes <$> mapM getTxOutFromRef outRefs
-      mdatum_l <- mapM getHash $ catMaybes $ map (fmap fst . preview ciTxOutScriptDatum) txouts
-      pure $ catMaybes mdatum_l
+      txouts <- catMaybes <$> mapM getTxOutFromRef (pageItems page)
+      datums <- catMaybes <$> mapM getHash (catMaybes $ map (fmap fst . preview ciTxOutScriptDatum) txouts)
+      case tip utxo of
+        TipAtGenesis -> do
+          logWarn TipIsGenesis
+          pure $ QueryResponse [] Nothing
+        _            ->
+          pure $ QueryResponse datums (nextPageQuery page)
     UtxoSetWithCurrency pageQuery assetClass -> do
         state <- get
         let outRefs = view (diskState . assetClassMap . at assetClass) state

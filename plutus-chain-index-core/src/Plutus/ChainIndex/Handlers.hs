@@ -94,8 +94,8 @@ handleQuery = \case
             TipAtGenesis -> throwError QueryFailedNoTip
             tp           -> pure (IsUtxoResponse tp (TxUtxoBalance.isUnspentOutput r utxoState))
     UtxoSetAtAddress pageQuery cred -> getUtxoSetAtAddress pageQuery cred
+    DatumsAtAddress pageQuery cred -> getDatumsAtAddress pageQuery cred
     UnspentTxOutSetAtAddress pageQuery cred -> getTxOutSetAtAddress pageQuery cred
-    DatumsAtAddress cred -> getDatumsAtAddress cred
     UtxoSetWithCurrency pageQuery assetClass ->
       getUtxoSetWithCurrency pageQuery assetClass
     TxoSetAtAddress pageQuery cred -> getTxoSetAtAddress pageQuery cred
@@ -272,17 +272,39 @@ getTxOutSetAtAddress pageQuery cred = do
 
 
 
-getDatumsAtAddress :: Member BeamEffect effs => Credential -> Eff effs [Datum]
-getDatumsAtAddress (toDbValue -> cred) = do
-  let query =
-        select
-        $ filter_ (\row -> _addressRowCred row ==. val_ cred )
-        $ all_ (addressRows db)
-  row_l <- queryList query
-  catMaybes <$> mapM f_map row_l
+getDatumsAtAddress ::
+  forall effs.
+    ( Member (State ChainIndexState) effs
+    , Member BeamEffect effs
+    , Member (LogMsg ChainIndexLog) effs
+    )
+  => PageQuery TxOutRef
+  -> Credential
+  -> Eff effs (QueryResponse [Datum])
+getDatumsAtAddress pageQuery (toDbValue -> cred) = do
+  utxoState <- gets @ChainIndexState UtxoState.utxoState
+  case UtxoState.tip utxoState of
+    TipAtGenesis -> do
+      logWarn TipIsGenesis
+      pure (QueryResponse [] Nothing)
+
+    _             -> do
+      let queryPage =
+            fmap _addressRowOutRef
+            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ all_ (addressRows db)
+          queryAll =
+            select
+            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ all_ (addressRows db)
+      pRefs <- selectPage (fmap toDbValue pageQuery) queryPage
+      let page = fmap fromDbValue pRefs
+      row_l <- List.filter (\(_, t, _, _) -> List.elem t (pageItems page)) <$> queryList queryAll
+      datums <- catMaybes <$> mapM f_map row_l
+      pure $ QueryResponse datums (nextPageQuery page)
 
   where
-    f_map :: Member BeamEffect effs => (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) -> Eff effs (Maybe Datum)
+    f_map :: (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) -> Eff effs (Maybe Datum)
     f_map (_, _, _, Just d)  = pure (Just d)
     f_map (_, _, Just dh, _) = getDatumFromHash dh
     f_map _                  = pure Nothing

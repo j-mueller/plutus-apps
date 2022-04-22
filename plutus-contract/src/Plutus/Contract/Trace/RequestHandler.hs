@@ -251,7 +251,7 @@ handleChainIndexQueries = RequestHandler $ \chainIndexQuery ->
         UnspentTxOutFromRef ref       -> UnspentTxOutResponse <$> ChainIndexEff.unspentTxOutFromRef ref
         UtxoSetMembership txOutRef    -> UtxoSetMembershipResponse <$> ChainIndexEff.utxoSetMembership txOutRef
         UtxoSetAtAddress pq c         -> UtxoSetAtResponse <$> ChainIndexEff.utxoSetAtAddress pq c
-        DatumsAtAddress c             -> DatumsAtResponse <$> ChainIndexEff.datumsAtAddress c
+        DatumsAtAddress pq c          -> DatumsAtResponse <$> ChainIndexEff.datumsAtAddress pq c
         UnspentTxOutSetAtAddress pq c -> UnspentTxOutsAtResponse <$> ChainIndexEff.unspentTxOutSetAtAddress pq c
         UtxoSetWithCurrency pq ac     -> UtxoSetWithCurrencyResponse <$> ChainIndexEff.utxoSetWithCurrency pq ac
         TxoSetAtAddress pq c          -> TxoSetAtResponse <$> ChainIndexEff.txoSetAtAddress pq c

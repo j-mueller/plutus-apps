@@ -115,7 +115,7 @@ import Data.Default (Default (def))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (AllUniqueLabels, HasType, KnownSymbol, type (.==))
 import Data.Text qualified as Text
@@ -312,6 +312,41 @@ datumFromHash h = do
     r                     -> throwError $ review _ChainIndexContractError ("DatumHashResponse", r)
 
 
+
+-- | Get all the datums at an address w.r.t. a page query TxOutRef
+queryDatumsAt ::
+    forall w s e.
+    ( AsContractError e
+    )
+    => PageQuery TxOutRef
+    -> Address
+    -> Contract w s e (QueryResponse [Datum])
+queryDatumsAt pq addr = do
+  cir <- pabReq (ChainIndexQueryReq $ E.DatumsAtAddress pq $ addressCredential addr) E._ChainIndexQueryResp
+  case cir of
+    E.DatumsAtResponse r -> pure r
+    r                    -> throwError $ review _ChainIndexContractError ("DatumsAtResponse", r)
+
+
+
+-- | Fold through each 'Page's of 'QueryResponse' at a given 'Address', and
+-- accumulate the result.
+foldQueryResponseAt ::
+    forall w s e a.
+    (PageQuery TxOutRef -> Address -> Contract w s e (QueryResponse a)) -- ^ query response function
+    -> (a -> a -> Contract w s e a) -- ^ Accumulator function
+    -> a -- ^ Initial value
+    -> Address -- ^ Address which contain the UTXOs
+    -> Contract w s e a
+foldQueryResponseAt q f ini addr = go ini (Just def)
+  where
+    go acc Nothing = pure acc
+    go acc (Just pq) = do
+      res <- q pq addr
+      newAcc <- f acc $ queryResult res
+      go newAcc (nextQuery res)
+
+
 -- | Get the all datums at an address whether or not the corresponding utxo have been consumed or not.
 datumsAt ::
     forall w s e.
@@ -320,11 +355,10 @@ datumsAt ::
     => Address
     -> Contract w s e [Datum]
 datumsAt addr = do
-  cir <- pabReq (ChainIndexQueryReq $ E.DatumsAtAddress $ addressCredential addr) E._ChainIndexQueryResp
-  case cir of
-    E.DatumsAtResponse r -> pure r
-    r                    -> throwError $ review _ChainIndexContractError ("DatumsAtResponse", r)
-
+  foldQueryResponseAt queryDatumsAt f [] addr
+  where
+    f acc res = do
+      pure $ acc <> res
 
 validatorFromHash ::
     forall w s e.
