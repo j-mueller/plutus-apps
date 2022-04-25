@@ -20,12 +20,13 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.RawJson (RawJson)
 import Data.Show.Generic (genericShow)
+import Data.Tuple (Tuple)
 import Data.Tuple.Nested ((/\))
 import Ledger.Address (PaymentPubKeyHash)
 import Ledger.Constraints.OffChain (UnbalancedTx)
 import Ledger.TimeSlot (SlotConversionError)
 import Ledger.Tx (CardanoTx, ChainIndexTxOut)
-import Plutus.ChainIndex.Api (IsUtxoResponse, TxosResponse, UtxosResponse)
+import Plutus.ChainIndex.Api (IsUtxoResponse, QueryResponse, TxosResponse, UtxosResponse)
 import Plutus.ChainIndex.Tx (ChainIndexTx)
 import Plutus.ChainIndex.Types (RollbackState, Tip, TxOutState)
 import Plutus.V1.Ledger.Address (Address)
@@ -128,7 +129,8 @@ data ChainIndexQuery
   | UnspentTxOutFromRef TxOutRef
   | UtxoSetMembership TxOutRef
   | UtxoSetAtAddress (PageQuery TxOutRef) Credential
-  | DatumsAtAddress Credential
+  | DatumsAtAddress (PageQuery TxOutRef) Credential
+  | UnspentTxOutSetAtAddress (PageQuery TxOutRef) Credential
   | UtxoSetWithCurrency (PageQuery TxOutRef) AssetClass
   | TxoSetAtAddress (PageQuery TxOutRef) Credential
   | GetTip
@@ -148,7 +150,8 @@ instance EncodeJson ChainIndexQuery where
     UnspentTxOutFromRef a -> E.encodeTagged "UnspentTxOutFromRef" a E.value
     UtxoSetMembership a -> E.encodeTagged "UtxoSetMembership" a E.value
     UtxoSetAtAddress a b -> E.encodeTagged "UtxoSetAtAddress" (a /\ b) (E.tuple (E.value >/\< E.value))
-    DatumsAtAddress a -> E.encodeTagged "DatumsAtAddress" a E.value
+    DatumsAtAddress a b -> E.encodeTagged "DatumsAtAddress" (a /\ b) (E.tuple (E.value >/\< E.value))
+    UnspentTxOutSetAtAddress a b -> E.encodeTagged "UnspentTxOutSetAtAddress" (a /\ b) (E.tuple (E.value >/\< E.value))
     UtxoSetWithCurrency a b -> E.encodeTagged "UtxoSetWithCurrency" (a /\ b) (E.tuple (E.value >/\< E.value))
     TxoSetAtAddress a b -> E.encodeTagged "TxoSetAtAddress" (a /\ b) (E.tuple (E.value >/\< E.value))
     GetTip -> encodeJson { tag: "GetTip", contents: jsonNull }
@@ -165,7 +168,8 @@ instance DecodeJson ChainIndexQuery where
         , "UnspentTxOutFromRef" /\ D.content (UnspentTxOutFromRef <$> D.value)
         , "UtxoSetMembership" /\ D.content (UtxoSetMembership <$> D.value)
         , "UtxoSetAtAddress" /\ D.content (D.tuple $ UtxoSetAtAddress </$\> D.value </*\> D.value)
-        , "DatumsAtAddress" /\ D.content (DatumsAtAddress <$> D.value)
+        , "DatumsAtAddress" /\ D.content (D.tuple $ DatumsAtAddress </$\> D.value </*\> D.value)
+        , "UnspentTxOutSetAtAddress" /\ D.content (D.tuple $ UnspentTxOutSetAtAddress </$\> D.value </*\> D.value)
         , "UtxoSetWithCurrency" /\ D.content (D.tuple $ UtxoSetWithCurrency </$\> D.value </*\> D.value)
         , "TxoSetAtAddress" /\ D.content (D.tuple $ TxoSetAtAddress </$\> D.value </*\> D.value)
         , "GetTip" /\ pure GetTip
@@ -215,9 +219,14 @@ _UtxoSetAtAddress = prism' (\{ a, b } -> (UtxoSetAtAddress a b)) case _ of
   (UtxoSetAtAddress a b) -> Just { a, b }
   _ -> Nothing
 
-_DatumsAtAddress :: Prism' ChainIndexQuery Credential
-_DatumsAtAddress = prism' DatumsAtAddress case _ of
-  (DatumsAtAddress a) -> Just a
+_DatumsAtAddress :: Prism' ChainIndexQuery { a :: PageQuery TxOutRef, b :: Credential }
+_DatumsAtAddress = prism' (\{ a, b } -> (DatumsAtAddress a b)) case _ of
+  (DatumsAtAddress a b) -> Just { a, b }
+  _ -> Nothing
+
+_UnspentTxOutSetAtAddress :: Prism' ChainIndexQuery { a :: PageQuery TxOutRef, b :: Credential }
+_UnspentTxOutSetAtAddress = prism' (\{ a, b } -> (UnspentTxOutSetAtAddress a b)) case _ of
+  (UnspentTxOutSetAtAddress a b) -> Just { a, b }
   _ -> Nothing
 
 _UtxoSetWithCurrency :: Prism' ChainIndexQuery { a :: PageQuery TxOutRef, b :: AssetClass }
@@ -247,7 +256,8 @@ data ChainIndexResponse
   | TxIdResponse (Maybe ChainIndexTx)
   | UtxoSetMembershipResponse IsUtxoResponse
   | UtxoSetAtResponse UtxosResponse
-  | DatumsAtResponse (Array String)
+  | DatumsAtResponse (QueryResponse (Array String))
+  | UnspentTxOutsAtResponse (QueryResponse (Array (Tuple TxOutRef ChainIndexTxOut)))
   | UtxoSetWithCurrencyResponse UtxosResponse
   | TxIdsResponse (Array ChainIndexTx)
   | TxoSetAtResponse TxosResponse
@@ -270,6 +280,7 @@ instance EncodeJson ChainIndexResponse where
     UtxoSetMembershipResponse a -> E.encodeTagged "UtxoSetMembershipResponse" a E.value
     UtxoSetAtResponse a -> E.encodeTagged "UtxoSetAtResponse" a E.value
     DatumsAtResponse a -> E.encodeTagged "DatumsAtResponse" a E.value
+    UnspentTxOutsAtResponse a -> E.encodeTagged "UnspentTxOutsAtResponse" a E.value
     UtxoSetWithCurrencyResponse a -> E.encodeTagged "UtxoSetWithCurrencyResponse" a E.value
     TxIdsResponse a -> E.encodeTagged "TxIdsResponse" a E.value
     TxoSetAtResponse a -> E.encodeTagged "TxoSetAtResponse" a E.value
@@ -289,6 +300,7 @@ instance DecodeJson ChainIndexResponse where
         , "UtxoSetMembershipResponse" /\ D.content (UtxoSetMembershipResponse <$> D.value)
         , "UtxoSetAtResponse" /\ D.content (UtxoSetAtResponse <$> D.value)
         , "DatumsAtResponse" /\ D.content (DatumsAtResponse <$> D.value)
+        , "UnspentTxOutsAtResponse" /\ D.content (UnspentTxOutsAtResponse <$> D.value)
         , "UtxoSetWithCurrencyResponse" /\ D.content (UtxoSetWithCurrencyResponse <$> D.value)
         , "TxIdsResponse" /\ D.content (TxIdsResponse <$> D.value)
         , "TxoSetAtResponse" /\ D.content (TxoSetAtResponse <$> D.value)
@@ -344,9 +356,14 @@ _UtxoSetAtResponse = prism' UtxoSetAtResponse case _ of
   (UtxoSetAtResponse a) -> Just a
   _ -> Nothing
 
-_DatumsAtResponse :: Prism' ChainIndexResponse (Array String)
+_DatumsAtResponse :: Prism' ChainIndexResponse (QueryResponse (Array String))
 _DatumsAtResponse = prism' DatumsAtResponse case _ of
   (DatumsAtResponse a) -> Just a
+  _ -> Nothing
+
+_UnspentTxOutsAtResponse :: Prism' ChainIndexResponse (QueryResponse (Array (Tuple TxOutRef ChainIndexTxOut)))
+_UnspentTxOutsAtResponse = prism' UnspentTxOutsAtResponse case _ of
+  (UnspentTxOutsAtResponse a) -> Just a
   _ -> Nothing
 
 _UtxoSetWithCurrencyResponse :: Prism' ChainIndexResponse UtxosResponse
