@@ -42,7 +42,7 @@ import Database.Beam (Columnar, Identity, SqlSelect, TableEntity, aggregate_, al
                       limit_, nub_, select, val_)
 import Database.Beam.Backend.SQL (BeamSqlBackendCanSerialize)
 import Database.Beam.Query (HasSqlEqualityCheck, asc_, desc_, exists_, guard_, isJust_, isNothing_, leftJoin_, orderBy_,
-                            update, (&&.), (<-.), (<.), (==.), (>.))
+                            update, (&&.), (<-.), (<.), (==.), (>.), (/=.))
 import Database.Beam.Schema.Tables (zipTables)
 import Database.Beam.Sqlite (Sqlite)
 import Ledger (TxId)
@@ -64,6 +64,7 @@ import Plutus.ChainIndex.UtxoState (InsertUtxoSuccess (..), RollbackResult (..),
 import Plutus.ChainIndex.UtxoState qualified as UtxoState
 import Plutus.Script.Utils.Scripts (datumHash)
 import Plutus.V2.Ledger.Api (Credential (..), Datum (..), DatumHash (..), TxOutRef (..))
+import PlutusTx.Builtins.Internal (emptyByteString)
 
 type ChainIndexState = UtxoIndex TxUtxoBalance
 
@@ -289,13 +290,18 @@ getDatumsAtAddress pageQuery (toDbValue -> cred) = do
       pure (QueryResponse [] Nothing)
 
     _             -> do
-      let queryPage =
+      let emptyHash = (toDbValue $ DatumHash emptyByteString)
+          queryPage =
             fmap _addressRowOutRef
-            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ filter_ (\row ->
+                         (_addressRowCred row ==. val_ cred )
+                         &&. (_addressRowDatumHash row /=. val_ emptyHash) )
             $ all_ (addressRows db)
           queryAll =
             select
-            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ filter_ (\row ->
+                         (_addressRowCred row ==. val_ cred)
+                         &&. (_addressRowDatumHash row /=. val_ emptyHash ))
             $ all_ (addressRows db)
       pRefs <- selectPage (fmap toDbValue pageQuery) queryPage
       let page = fmap fromDbValue pRefs
