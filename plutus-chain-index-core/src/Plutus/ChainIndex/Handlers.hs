@@ -40,8 +40,8 @@ import Data.Word (Word64)
 import Database.Beam (Columnar, Identity, SqlSelect, TableEntity, aggregate_, all_, countAll_, delete, filter_, limit_,
                       not_, nub_, select, val_)
 import Database.Beam.Backend.SQL (BeamSqlBackendCanSerialize)
-import Database.Beam.Query (HasSqlEqualityCheck, asc_, desc_, exists_, orderBy_, update, (&&.), (<-.), (<.), (==.),
-                            (>.))
+import Database.Beam.Query (HasSqlEqualityCheck, asc_, desc_, exists_, orderBy_, update, (&&.), (/=.), (<-.), (<.),
+                            (==.), (>.))
 import Database.Beam.Schema.Tables (zipTables)
 import Database.Beam.Sqlite (Sqlite)
 import Ledger (Address (..), ChainIndexTxOut (..), Datum, DatumHash (..), TxOut (..), TxOutRef (..))
@@ -61,6 +61,7 @@ import Plutus.ChainIndex.UtxoState (InsertUtxoSuccess (..), RollbackResult (..),
 import Plutus.ChainIndex.UtxoState qualified as UtxoState
 import Plutus.V1.Ledger.Ada qualified as Ada
 import Plutus.V1.Ledger.Api (Credential (..))
+import PlutusTx.Builtins.Internal (emptyByteString)
 
 type ChainIndexState = UtxoIndex TxUtxoBalance
 
@@ -225,13 +226,18 @@ getDatumsAtAddress pageQuery (toDbValue -> cred) = do
       pure (QueryResponse [] Nothing)
 
     _             -> do
-      let queryPage =
+      let emptyHash = (toDbValue $ DatumHash emptyByteString)
+          queryPage =
             fmap _addressRowOutRef
-            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ filter_ (\row ->
+                         (_addressRowCred row ==. val_ cred )
+                         &&. (_addressRowDatumHash row /=. val_ emptyHash) )
             $ all_ (addressRows db)
           queryAll =
             select
-            $ filter_ (\row -> _addressRowCred row ==. val_ cred )
+            $ filter_ (\row ->
+                         (_addressRowCred row ==. val_ cred)
+                         &&. (_addressRowDatumHash row /=. val_ emptyHash ))
             $ all_ (addressRows db)
       pRefs <- selectPage (fmap toDbValue pageQuery) queryPage
       let page = fmap fromDbValue pRefs
