@@ -196,15 +196,15 @@ getUtxoSetAtAddress pageQuery (toDbValue -> cred) = do
       tp           -> do
           let query =
                 fmap _addressRowOutRef $ do
-                  rowAddr <- filter_
-                             (\row ->
-                                 (_addressRowCred row ==. val_ cred)
-                                 &&. not_ (exists_ (filter_
-                                                     (\utxi -> _addressRowOutRef row ==. _unmatchedInputRowOutRef utxi)
-                                                     (all_ (unmatchedInputRows db))))
-                             ) (all_ (addressRows db))
-                  void $ join_ (unspentOutputRows db) (\utxo -> _addressRowOutRef rowAddr ==. _unspentOutputRowOutRef utxo)
-                  pure rowAddr
+                rowAddr <- filter_
+                           (\row ->
+                               (_addressRowCred row ==. val_ cred)
+                               &&. not_ (exists_ (filter_
+                                                   (\utxi -> _addressRowOutRef row ==. _unmatchedInputRowOutRef utxi)
+                                                   (all_ (unmatchedInputRows db))))
+                           ) (all_ (addressRows db))
+                void $ join_ (unspentOutputRows db) (\utxo -> _addressRowOutRef rowAddr ==. _unspentOutputRowOutRef utxo)
+                pure rowAddr
 
           outRefs <- selectPage (fmap toDbValue pageQuery) query
           let page = fmap fromDbValue outRefs
@@ -292,12 +292,16 @@ getUtxoSetWithCurrency pageQuery (toDbValue -> assetClass) = do
           pure (UtxosResponse TipAtGenesis (Page pageQuery Nothing []))
       tp           -> do
           let query =
-                fmap _assetClassRowOutRef
-                  $ filter_ (\row -> (_assetClassRowAssetClass row ==. val_ assetClass)
-                      &&. exists_ (filter_ (\utxo -> _assetClassRowOutRef row ==. _unspentOutputRowOutRef utxo) (all_ (unspentOutputRows db)))
-                      &&. not_ (exists_ (filter_ (\utxi -> _assetClassRowOutRef row ==. _unmatchedInputRowOutRef utxi) (all_ (unmatchedInputRows db))))
-                      )
-                  $ all_ (assetClassRows db)
+                fmap _assetClassRowOutRef $ do
+                rowAddr <- filter_
+                           (\row ->
+                              (_assetClassRowAssetClass row ==. val_ assetClass)
+                             &&. not_ (exists_ (filter_
+                                                 (\utxi -> _assetClassRowOutRef row ==. _unmatchedInputRowOutRef utxi)
+                                                 (all_ (unmatchedInputRows db))))
+                      ) (all_ (assetClassRows db))
+                void $ join_ (unspentOutputRows db) (\utxo -> _assetClassRowOutRef rowAddr ==. _unspentOutputRowOutRef utxo)
+                pure rowAddr
 
           outRefs <- selectPage (fmap toDbValue pageQuery) query
           let page = fmap fromDbValue outRefs
