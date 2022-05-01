@@ -21,7 +21,7 @@ module Plutus.ChainIndex.Handlers
 import Cardano.Api qualified as C
 import Control.Applicative (Const (..))
 import Control.Lens (Lens', view)
-import Control.Monad (foldM)
+import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member, type (~>))
 import Control.Monad.Freer.Error (Error, throwError)
 import Control.Monad.Freer.Extras.Beam (BeamEffect (..), BeamableSqlite, combined, selectList, selectOne, selectPage)
@@ -37,8 +37,8 @@ import Data.Maybe (catMaybes, fromMaybe, mapMaybe, maybeToList)
 import Data.Proxy (Proxy (..))
 import Data.Set qualified as Set
 import Data.Word (Word64)
-import Database.Beam (Columnar, Identity, SqlSelect, TableEntity, aggregate_, all_, countAll_, delete, filter_, limit_,
-                      not_, nub_, select, val_)
+import Database.Beam (Columnar, Identity, SqlSelect, TableEntity, aggregate_, all_, countAll_, delete, filter_, join_,
+                      limit_, not_, nub_, select, val_)
 import Database.Beam.Backend.SQL (BeamSqlBackendCanSerialize)
 import Database.Beam.Query (HasSqlEqualityCheck, asc_, desc_, exists_, orderBy_, update, (&&.), (/=.), (<-.), (<.),
                             (==.), (>.))
@@ -195,13 +195,16 @@ getUtxoSetAtAddress pageQuery (toDbValue -> cred) = do
           pure (UtxosResponse TipAtGenesis (Page pageQuery Nothing []))
       tp           -> do
           let query =
-                fmap _addressRowOutRef
-                  $ filter_ (\row ->
-                      (_addressRowCred row ==. val_ cred)
-                      &&. exists_ (filter_ (\utxo -> _addressRowOutRef row ==. _unspentOutputRowOutRef utxo) (all_ (unspentOutputRows db)))
-                      &&. not_ (exists_ (filter_ (\utxi -> _addressRowOutRef row ==. _unmatchedInputRowOutRef utxi) (all_ (unmatchedInputRows db))))
-                      )
-                  $ all_ (addressRows db)
+                fmap _addressRowOutRef $ do
+                  rowAddr <- filter_
+                             (\row ->
+                                 (_addressRowCred row ==. val_ cred)
+                                 &&. not_ (exists_ (filter_
+                                                     (\utxi -> _addressRowOutRef row ==. _unmatchedInputRowOutRef utxi)
+                                                     (all_ (unmatchedInputRows db))))
+                             ) (all_ (addressRows db))
+                  void $ join_ (unspentOutputRows db) (\utxo -> _addressRowOutRef rowAddr ==. _unspentOutputRowOutRef utxo)
+                  pure rowAddr
 
           outRefs <- selectPage (fmap toDbValue pageQuery) query
           let page = fmap fromDbValue outRefs
