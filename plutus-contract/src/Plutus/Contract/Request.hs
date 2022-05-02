@@ -112,7 +112,7 @@ import GHC.Generics (Generic)
 import GHC.Natural (Natural)
 import GHC.TypeLits (Symbol, symbolVal)
 import Ledger (Address, AssetClass, Datum, DatumHash, DiffMilliSeconds, MintingPolicy, MintingPolicyHash, POSIXTime,
-               PaymentPubKeyHash, Redeemer, RedeemerHash, Slot, StakeValidator, StakeValidatorHash, TxId, TxOutRef,
+               PaymentPubKeyHash, Redeemer, RedeemerHash, Slot (..), StakeValidator, StakeValidatorHash, TxId, TxOutRef,
                Validator, ValidatorHash, Value, addressCredential, fromMilliSeconds)
 import Ledger.Constraints (TxConstraints)
 import Ledger.Constraints.OffChain (ScriptLookups, UnbalancedTx)
@@ -124,7 +124,7 @@ import Plutus.Contract.Util (loopM)
 import PlutusTx qualified
 
 import Plutus.Contract.Effects (ActiveEndpoint (ActiveEndpoint, aeDescription, aeMetadata),
-                                PABReq (AwaitSlotReq, AwaitTimeReq, AwaitTxOutStatusChangeReq, AwaitTxStatusChangeReq, AwaitUtxoProducedReq, AwaitUtxoSpentReq, BalanceTxReq, ChainIndexQueryReq, CurrentSlotReq, CurrentTimeReq, ExposeEndpointReq, OwnContractInstanceIdReq, OwnPaymentPublicKeyHashReq, WriteBalancedTxReq, YieldUnbalancedTxReq),
+                                PABReq (AwaitSlotReq, AwaitTimeReq, AwaitTxOutStatusChangeReq, AwaitTxStatusChangeReq, AwaitUtxoProducedReq, AwaitUtxoSpentReq, BalanceTxReq, ChainIndexQueryReq, CurrentTimeReq, ExposeEndpointReq, OwnContractInstanceIdReq, OwnPaymentPublicKeyHashReq, WriteBalancedTxReq, YieldUnbalancedTxReq),
                                 PABResp (ExposeEndpointResp))
 import Plutus.Contract.Effects qualified as E
 import Plutus.Contract.Logging (logDebug)
@@ -134,7 +134,7 @@ import Wallet.Types (ContractInstanceId, EndpointDescription (EndpointDescriptio
 
 import Plutus.ChainIndex (ChainIndexTx, PageQuery, txOutRefs)
 import Plutus.ChainIndex.Api (IsUtxoResponse, QueryResponse (nextQuery, queryResult), TxosResponse, UtxosResponse)
-import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip, TxOutStatus, TxStatus)
+import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip (..), TxOutStatus, TxStatus)
 import Plutus.Contract.Error (AsContractError (_ChainIndexContractError, _ConstraintResolutionContractError, _EndpointDecodeContractError, _ResumableContractError, _WalletContractError))
 import Plutus.Contract.Resumable (prompt)
 import Plutus.Contract.Types (Contract (Contract), MatchingError (WrongVariantError), Promise (Promise), mapError,
@@ -185,12 +185,17 @@ isSlot ::
 isSlot = Promise . awaitSlot
 
 -- | Get the current slot number
+-- querying slot number from plutus chain index to be aligned with slot at local running node
 currentSlot ::
     forall w s e.
     ( AsContractError e
     )
     => Contract w s e Slot
-currentSlot = pabReq CurrentSlotReq E._CurrentSlotResp
+currentSlot = do
+  t <- getTip
+  case t of
+    TipAtGenesis   -> return $ Slot 0
+    (Tip slot _ _) -> return slot
 
 -- | Wait for a number of slots to pass
 waitNSlots ::
