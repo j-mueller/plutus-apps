@@ -238,7 +238,6 @@ chainIndexMatches q r = case (q, r) of
     (UtxoSetAtAddress{}, UtxoSetAtResponse{})                -> True
     (UnspentTxOutSetAtAddress{}, UnspentTxOutsAtResponse{})  -> True
     (DatumsAtAddress{}, DatumsAtResponse{})                  -> True
-    (UnspentTxOutSetAtAddress{}, UnspentTxOutsAtResponse{})  -> True
     (UtxoSetWithCurrency{}, UtxoSetWithCurrencyResponse{})   -> True
     (TxoSetAtAddress{}, TxoSetAtResponse{})                  -> True
     (TxsFromTxIds{}, TxIdsResponse{})                        -> True
