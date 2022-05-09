@@ -69,28 +69,17 @@ processEventsQueue trace runReq eventsQueue = forever $ do
   where
     processEvents :: TimeSpec -> [ChainSyncEvent] -> IO ()
     processEvents _ [] = pure ()
-    processEvents start events@( e : restEvents ) = case e of
-      (Resume resumePoint) -> do
-        void $ runChainIndexDuringSync runReq $ CI.resumeSync resumePoint
-        end <- getTime Monotonic
-        void $ runLogEffects (convertLog PrettyObject trace) $ logProgress [e] (diffTimeSpec end start)
+    processEvents start events = case events of
+      (Resume resumePoint) : (RollBackward backwardPoint _) : restEvents -> do
+        void $ runChainIndexDuringSync runReq $ do
+          CI.rollback backwardPoint
+          CI.resumeSync resumePoint
         processEvents start restEvents
 
-      (RollBackward backwardPoint _) -> do
-        void $ runChainIndexDuringSync runReq $ CI.rollback backwardPoint
-        end <- getTime Monotonic
-        void $ runLogEffects (convertLog PrettyObject trace) $ logProgress [e] (diffTimeSpec end start)
-        processEvents start restEvents
-
-      (RollForward _ _) -> do
-         let isNotRollForwardEvt = \case
-               (RollForward _ _) -> False
-               _                 -> True
-             (rollForwardEvents, restEvents') = break isNotRollForwardEvt events
-             blocks = catMaybes $ rollForwardEvents <&> \case
+      _ -> do
+         let blocks = catMaybes $ events <&> \case
                (RollForward block _) -> Just block
                _                     -> Nothing
          void $ runChainIndexDuringSync runReq $ CI.appendBlocks blocks
          end <- getTime Monotonic
-         void $ runLogEffects (convertLog PrettyObject trace) $ logProgress rollForwardEvents (diffTimeSpec end start)
-         processEvents start restEvents'
+         void $ runLogEffects (convertLog PrettyObject trace) $ logProgress events (diffTimeSpec end start)
