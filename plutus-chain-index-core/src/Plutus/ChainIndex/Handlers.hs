@@ -196,10 +196,10 @@ getUtxoSetAtAddress pageQuery (toDbValue -> cred) = do
       tp           -> do
           let query = do
                 rowRef <- fmap _unspentOutputRowOutRef (all_ (unspentOutputRows db))
-                utxi <- fmap _unmatchedInputRowOutRef $ leftJoin_ (all_ (unmatchedInputRows db)) (\utxi -> rowRef ==. _unmatchedInputRowOutRef utxi)
                 rowCred <- leftJoin_
-                           (filter_ (\row -> _addressRowCred row ==. val_ cred) (all_ (addressRows db)))
-                           (\row -> _addressRowOutRef row ==. rowRef)
+                           (fmap _addressRowOutRef (filter_ (\row -> _addressRowCred row ==. val_ cred) (all_ (addressRows db))))
+                           (\row -> row ==. rowRef)
+                utxi <- leftJoin_ (fmap _unmatchedInputRowOutRef $ all_ (unmatchedInputRows db)) (\utxi -> rowRef ==. utxi)
                 guard_ (isNothing_ utxi)
                 guard_ (isJust_ rowCred)
                 pure rowRef
@@ -291,10 +291,10 @@ getUtxoSetWithCurrency pageQuery (toDbValue -> assetClass) = do
       tp           -> do
           let query = do
                 rowRef <- fmap _unspentOutputRowOutRef (all_ (unspentOutputRows db))
-                utxi <- fmap _unmatchedInputRowOutRef $ leftJoin_ (all_ (unmatchedInputRows db)) (\utxi -> rowRef ==. _unmatchedInputRowOutRef utxi)
                 rowClass <- leftJoin_
-                            (filter_ (\row -> _assetClassRowAssetClass row ==. val_ assetClass) (all_ (assetClassRows db)))
-                            (\row -> _assetClassRowOutRef row ==. rowRef)
+                            (fmap _assetClassRowOutRef (filter_ (\row -> _assetClassRowAssetClass row ==. val_ assetClass) (all_ (assetClassRows db))))
+                            (\row -> row ==. rowRef)
+                utxi <- leftJoin_ (fmap _unmatchedInputRowOutRef $ all_ (unmatchedInputRows db)) (\utxi -> rowRef ==. utxi)
                 guard_ (isNothing_ utxi)
                 guard_ (isJust_ rowClass)
                 pure rowRef
