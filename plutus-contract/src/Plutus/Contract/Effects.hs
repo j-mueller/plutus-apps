@@ -32,6 +32,8 @@ module Plutus.Contract.Effects( -- TODO: Move to Requests.Internal
     _UnspentTxOutFromRef,
     _UtxoSetMembership,
     _UtxoSetAtAddress,
+    _DatumsAtAddress,
+    _UnspentTxOutSetAtAddress,
     _UtxoSetWithCurrency,
     _TxoSetAtAddress,
     _GetTip,
@@ -63,6 +65,8 @@ module Plutus.Contract.Effects( -- TODO: Move to Requests.Internal
     _TxIdResponse,
     _UtxoSetMembershipResponse,
     _UtxoSetAtResponse,
+    _DatumsAtResponse,
+    _UnspentTxOutsAtResponse,
     _UtxoSetWithCurrencyResponse,
     _TxIdsResponse,
     _TxoSetAtResponse,
@@ -302,7 +306,7 @@ instance Pretty ChainIndexResponse where
         DatumsAtResponse (QueryResponse datums _)  ->
           "Chain index datums from address response:" <+> hsep (fmap pretty datums)
         UnspentTxOutsAtResponse (QueryResponse txouts _) ->
-          "Chain index datums from address response:" <+> hsep (fmap pretty txouts)
+          "Unspent utxos from address response:" <+> hsep (fmap pretty txouts)
         UtxoSetWithCurrencyResponse (UtxosResponse tip txOutRefPage) ->
                 "Chain index UTxO with asset class response:"
             <+> "Current tip is"
