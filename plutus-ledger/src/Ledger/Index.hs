@@ -154,7 +154,7 @@ data ValidationError =
     -- ^ The fee is not denominated entirely in Ada.
     | ScriptFailure ScriptError
     -- ^ For pay-to-script outputs: evaluation of the validator script failed.
-    | CurrentSlotOutOfRange Slot.Slot
+    | CurrentSlotOutOfRange Slot.Slot (Interval.Interval Slot.Slot)
     -- ^ The current slot is not covered by the transaction's validity slot range.
     | SignatureMissing PubKeyHash
     -- ^ The transaction is missing a signature
@@ -250,7 +250,7 @@ checkSlotRange :: ValidationMonad m => Slot.Slot -> Tx -> m ()
 checkSlotRange sl tx =
     if Interval.member sl (txValidRange tx)
     then pure ()
-    else throwError $ CurrentSlotOutOfRange sl
+    else throwError $ CurrentSlotOutOfRange sl (txValidRange tx)
 
 -- | Check if the inputs of the transaction consume outputs that exist, and
 --   can be unlocked by the signatures or validator scripts of the inputs.
