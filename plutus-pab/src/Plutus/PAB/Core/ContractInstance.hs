@@ -38,7 +38,7 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
 import Control.Lens (preview)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_)
 import Control.Monad.Freer (Eff, LastMember, Member, type (~>))
 import Control.Monad.Freer.Error (Error)
 import Control.Monad.Freer.Extras.Log (LogMessage, LogMsg, LogObserve, logDebug, logInfo)
