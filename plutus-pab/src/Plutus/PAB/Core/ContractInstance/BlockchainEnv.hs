@@ -66,6 +66,7 @@ startNodeClient socket mode rollbackHistory slotConfig networkId resumePoint ins
         let resumePoints = maybeToList $ toCardanoPoint resumePoint
         void $ Client.runChainSync socket nullTracer slotConfig networkId resumePoints
           (\block -> handleSyncAction =<< processChainSyncEvent instancesState env block)
+      NoChainSyncEvents -> pure ()
     pure env
 
 -- | Deal with sync action failures from running this STM action. For now, we

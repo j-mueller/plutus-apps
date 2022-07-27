@@ -35,7 +35,7 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Cardano.BM.Trace (Trace, logDebug)
 import Cardano.ChainIndex.Types qualified as ChainIndex
 import Cardano.Node.Client (handleNodeClientClient, runChainSyncWithCfg)
-import Cardano.Node.Types (ChainSyncHandle, NodeMode (AlonzoNode, MockNode),
+import Cardano.Node.Types (ChainSyncHandle, NodeMode (MockNode),
                            PABServerConfig (PABServerConfig, pscBaseUrl, pscNetworkId, pscNodeMode, pscProtocolParametersJsonPath, pscSlotConfig, pscSocketPath))
 import Cardano.Protocol.Socket.Mock.Client qualified as MockClient
 import Cardano.Wallet.LocalClient qualified as LocalWalletClient
@@ -220,7 +220,7 @@ handleWalletEffect PABServerConfig { pscNodeMode = MockNode } _ w eff = do
         Nothing -> throwError RemoteWalletWithMockNodeError
         Just clientEnv ->
             runReader clientEnv $ WalletMockClient.handleWalletClient @IO w eff
-handleWalletEffect nodeCfg@PABServerConfig { pscNodeMode = AlonzoNode } cidM w eff = do
+handleWalletEffect nodeCfg cidM w eff = do
     clientEnvM <- ask @(Maybe ClientEnv)
     case clientEnvM of
         Nothing -> RemoteWalletClient.handleWalletClient nodeCfg cidM eff
@@ -264,9 +264,8 @@ mkEnv appTrace appConfig@Config { dbConfig
     dbPool <- dbConnect appTrace dbConfig
     txSendHandle <-
       case pscNodeMode of
-        AlonzoNode -> pure Nothing
-        MockNode   ->
-          liftIO $ Just <$> MockClient.runTxSender pscSocketPath
+        MockNode -> liftIO $ Just <$> MockClient.runTxSender pscSocketPath
+        _        -> pure Nothing
     -- This is for access to the slot number in the interpreter
     chainSyncHandle <- runChainSyncWithCfg $ nodeServerConfig appConfig
     appInMemContractStore <- liftIO initialInMemInstances
