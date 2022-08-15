@@ -124,8 +124,8 @@ import Data.Void (Void)
 import GHC.Generics (Generic)
 import GHC.Natural (Natural)
 import GHC.TypeLits (Symbol, symbolVal)
-import Ledger (AssetClass, DiffMilliSeconds, POSIXTime, PaymentPubKeyHash (PaymentPubKeyHash), Slot(Slot), TxId, TxOutRef,
-               Value, addressCredential, fromMilliSeconds, txOutRefId)
+import Ledger (AssetClass, DiffMilliSeconds, POSIXTime, PaymentPubKeyHash (PaymentPubKeyHash), Slot (Slot), TxId,
+               TxOutRef, Value, addressCredential, fromMilliSeconds, txOutRefId)
 import Ledger.Constraints (TxConstraints)
 import Ledger.Constraints.OffChain (ScriptLookups, UnbalancedTx)
 import Ledger.Constraints.OffChain qualified as Constraints
@@ -149,8 +149,9 @@ import Wallet.Types (ContractInstanceId, EndpointDescription (EndpointDescriptio
 import Data.Foldable (fold)
 import Data.List.NonEmpty qualified as NonEmpty
 import Plutus.ChainIndex (ChainIndexTx, Page (nextPageQuery, pageItems), PageQuery, txOutRefs)
-import Plutus.ChainIndex.Api (IsUtxoResponse, QueryResponse, TxosResponse, UtxosResponse, collectQueryResponse, paget, queryResult, nextQuery)
-import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip(TipAtGenesis, Tip), TxOutStatus, TxStatus)
+import Plutus.ChainIndex.Api (IsUtxoResponse, QueryResponse, TxosResponse, UtxosResponse, collectQueryResponse,
+                              nextQuery, paget, queryResult)
+import Plutus.ChainIndex.Types (RollbackState (Unknown), Tip (Tip, TipAtGenesis), TxOutStatus, TxStatus)
 import Plutus.Contract.Error (AsContractError (_ChainIndexContractError, _ConstraintResolutionContractError, _EndpointDecodeContractError, _ResumableContractError, _TxToCardanoConvertContractError, _WalletContractError))
 import Plutus.Contract.Resumable (prompt)
 import Plutus.Contract.Types (Contract (Contract), MatchingError (WrongVariantError), Promise (Promise), mapError,

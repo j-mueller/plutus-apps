@@ -41,8 +41,8 @@ import Data.Word (Word64)
 import Database.Beam (Columnar, Identity, SqlSelect, TableEntity, aggregate_, all_, countAll_, delete, filter_, limit_,
                       not_, nub_, select, val_)
 import Database.Beam.Backend.SQL (BeamSqlBackendCanSerialize)
-import Database.Beam.Query (HasSqlEqualityCheck, asc_, desc_, exists_, orderBy_, join_, in_,
-                            update, (&&.), (<-.), (<.), (==.), (>.), (/=.))
+import Database.Beam.Query (HasSqlEqualityCheck, asc_, desc_, exists_, in_, join_, orderBy_, update, (&&.), (/=.),
+                            (<-.), (<.), (==.), (>.))
 import Database.Beam.Schema.Tables (zipTables)
 import Database.Beam.Sqlite (Sqlite)
 import Ledger (TxId)
@@ -609,7 +609,7 @@ fromTx tx = mempty
                       NoOutputDatum     -> (Nothing, Nothing)
           in (addressCredential, ref, hsh, dt)
         inlineDatums :: InsertRows (TableEntity DatumRowT)
-        inlineDatums = 
+        inlineDatums =
             let f (OutputDatum dt) = Just (datumHash dt, dt)
                 f _                = Nothing
             in InsertRows (toDbValue <$> mapMaybe (f . citoDatum . fst) outputs)

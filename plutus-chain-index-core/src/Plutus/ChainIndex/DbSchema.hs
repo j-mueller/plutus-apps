@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds      #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveAnyClass       #-}
@@ -7,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# options_ghc -Wno-missing-signatures #-}
@@ -42,7 +42,7 @@ import Ledger (BlockId (..), ChainIndexTxOut (..), Slot)
 import Plutus.ChainIndex.Tx (ChainIndexTx)
 import Plutus.ChainIndex.Tx qualified as CI
 import Plutus.ChainIndex.Types (BlockNumber (..), Tip (..))
-import Plutus.V1.Ledger.Api (Credential, Datum(..), DatumHash (..), MintingPolicy, MintingPolicyHash (..), Redeemer,
+import Plutus.V1.Ledger.Api (Credential, Datum (..), DatumHash (..), MintingPolicy, MintingPolicyHash (..), Redeemer,
                              RedeemerHash (..), Script, StakeValidator, StakeValidatorHash (..), TxId (..),
                              TxOutRef (..), Validator, ValidatorHash (..))
 import Plutus.V1.Ledger.Scripts (ScriptHash (..))
@@ -323,7 +323,7 @@ instance HasDbType (TxId, ChainIndexTx) where
 instance HasDbType (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) where
   type DbType (Credential, TxOutRef, Maybe DatumHash, Maybe Datum) = AddressRow
   toDbValue (cred, outRef, Nothing, dd) =
-    let nothing = (toDbValue $ DatumHash emptyByteString) 
+    let nothing = (toDbValue $ DatumHash emptyByteString)
     in AddressRow (toDbValue cred) (toDbValue outRef) nothing (toDbValue dd)
   toDbValue (cred, outRef, Just dh, dd) = AddressRow (toDbValue cred) (toDbValue outRef) (toDbValue dh) (toDbValue dd)
   fromDbValue (AddressRow cred outRef dh dt) =
