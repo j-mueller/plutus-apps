@@ -51,6 +51,7 @@ module Plutus.PAB.Core
     , ContractInstanceEffects
     , handleAgentThread
     , stopInstance
+    , removeInstance
     , instanceActivity
     -- * Querying the state
     , instanceState
@@ -103,7 +104,7 @@ import Data.Default (Default (def))
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isJust)
 import Data.Proxy (Proxy (Proxy))
 import Data.Set (Set)
 import Data.Text (Text)
@@ -129,7 +130,7 @@ import Plutus.PAB.Effects.TimeEffect (TimeEffect (SystemTime), systemTime)
 import Plutus.PAB.Effects.UUID (UUIDEffect, handleUUIDEffect)
 import Plutus.PAB.Events.ContractInstanceState (PartiallyDecodedResponse, fromResp)
 import Plutus.PAB.Monitoring.PABLogMsg (PABMultiAgentMsg (ContractInstanceLog, EmulatorMsg))
-import Plutus.PAB.Timeout (Timeout)
+import Plutus.PAB.Timeout (Timeout (..))
 import Plutus.PAB.Timeout qualified as Timeout
 import Plutus.PAB.Types (PABError (ContractInstanceNotFound, InstanceAlreadyStopped, OtherError, WalletError))
 import Plutus.PAB.Webserver.Types (ContractActivationArgs (ContractActivationArgs, caID, caWallet))
@@ -178,13 +179,16 @@ pabRunner = do
 -- | Shared data that is needed by all PAB threads.
 data PABEnvironment t env =
     PABEnvironment
-        { instancesState  :: InstancesState
+        { instancesState    :: InstancesState
         -- | How long to wait for an endpoint to become active before throwing the
         --   'EndpointNotAvailable' error.
-        , endpointTimeout :: Timeout
-        , blockchainEnv   :: BlockchainEnv
-        , appEnv          :: env
-        , effectHandlers  :: EffectHandlers t env
+        , endpointTimeout   :: Timeout
+        -- | How long to wait when querying the status for an invoked endpoint before throwing the
+        --   a timeout error.
+        , waitStatusTimeout :: Timeout
+        , blockchainEnv     :: BlockchainEnv
+        , appEnv            :: env
+        , effectHandlers    :: EffectHandlers t env
         }
 
 -- | Top-level entry point. Run a 'PABAction', using the 'EffectHandlers' to
@@ -193,10 +197,11 @@ data PABEnvironment t env =
 runPAB ::
     forall t env a.
     Timeout
+    -> Timeout
     -> EffectHandlers t env
     -> PABAction t env a
     -> IO (Either PABError a)
-runPAB endpointTimeout effectHandlers action = runM $ runError $ do
+runPAB endpointTimeout waitStatusTimeout effectHandlers action = runM $ runError $ do
     let EffectHandlers { initialiseEnvironment
                        , onStartup
                        , onShutdown
@@ -206,7 +211,7 @@ runPAB endpointTimeout effectHandlers action = runM $ runError $ do
                        , handleContractDefinitionEffect
                        } = effectHandlers
     (instancesState, blockchainEnv, appEnv) <- initialiseEnvironment
-    let env = PABEnvironment{instancesState, blockchainEnv, appEnv, effectHandlers, endpointTimeout}
+    let env = PABEnvironment{instancesState, blockchainEnv, appEnv, effectHandlers, endpointTimeout, waitStatusTimeout}
 
     runReader env $ interpret (handleTimeEffect @t @env)
                   $ handleLogMessages
@@ -292,7 +297,9 @@ callEndpointOnInstance ::
     -> PABAction t env (Maybe NotificationError)
 callEndpointOnInstance instanceID ep value = do
     state <- asks @(PABEnvironment t env) instancesState
-    timeoutVar <- asks @(PABEnvironment t env) endpointTimeout >>= liftIO . Timeout.startTimeout
+    -- waiting only when timeout specified. Otherwise fails when endpoint unavailable.
+    timeoutVar <- asks @(PABEnvironment t env) endpointTimeout >>=
+                  (\t -> liftIO $ if (isJust $ unTimeout t) then Timeout.startTimeout t else STM.newTMVarIO ())
     liftIO (Instances.callEndpointOnInstanceTimeout timeoutVar state (EndpointDescription ep) (JSON.toJSON value) instanceID >>= STM.atomically)
 
 -- | The 'InstanceState' for the instance. Throws a 'ContractInstanceNotFound' error if the instance does not exist.
@@ -302,10 +309,11 @@ instanceStateInternal instanceId = do
         >>= liftIO . Instances.instanceState instanceId
         >>= maybe (throwError $ ContractInstanceNotFound instanceId) pure
 
--- | Delete the instance from the 'InstancesState' of the @PABEnvironment@
+-- | Delete the instance from the 'InstancesState' of the @PABEnvironment@ and from `InMemInstances` / Beam db.
 removeInstance :: forall t env. ContractInstanceId -> PABAction t env ()
 removeInstance instanceId = do
     asks @(PABEnvironment t env) instancesState >>= liftIO . Instances.removeInstance instanceId
+    Contract.deleteState @t instanceId
 
 -- | Stop the instance.
 stopInstance :: forall t env. ContractInstanceId -> PABAction t env ()
@@ -318,7 +326,6 @@ stopInstance instanceId = do
                 _      -> pure (Just $ InstanceAlreadyStopped instanceId)
     traverse_ throwError r'
     removeInstance instanceId
-    Contract.deleteState @t instanceId
 
 -- | The 'Activity' of the instance.
 instanceActivity :: forall t env. ContractInstanceId -> PABAction t env Activity
@@ -524,8 +531,8 @@ waitForInstanceState ::
   PABAction t env ContractActivityStatus
 waitForInstanceState extract instanceId = do
   is <- instanceStateInternal instanceId
-  PABEnvironment{endpointTimeout} <- ask @(PABEnvironment t env)
-  timeout <- liftIO (Timeout.startTimeout endpointTimeout)
+  PABEnvironment{waitStatusTimeout} <- ask @(PABEnvironment t env)
+  timeout <- liftIO (Timeout.startTimeout waitStatusTimeout)
   let waitAction = extract is >>= maybe empty pure
   result <- liftIO (STM.atomically ((Left <$> STM.takeTMVar timeout) <|> (Right <$> waitAction)))
   case result of
