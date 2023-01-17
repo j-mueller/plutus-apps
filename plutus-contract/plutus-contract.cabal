@@ -136,7 +136,7 @@ library
     , cardano-ledger-shelley-ma
     , cardano-ledger-shelley
     , cardano-ledger-core
-    , cardano-wallet-core
+    , cardano-wallet
     , plutus-core            >=1.0.0
     , plutus-ledger-api      >=1.0.0
     , plutus-tx              >=1.0.0
@@ -153,6 +153,7 @@ library
     , aeson                 >=1.5.2
     , aeson-pretty
     , base                  >=4.7     && <5
+    , base16-bytestring
     , bytestring
     , containers
     , cryptonite            >=0.25
